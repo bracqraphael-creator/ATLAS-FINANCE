@@ -82,10 +82,15 @@ MARKET_CHECK = {"US0378331005": "EUR", "IE000BI8OT95": "EUR", "FR0000121014": "E
 
 
 @app.get("/market/check")
-def market_check() -> dict[str, Any]:
-    """Diagnostic : le fournisseur de cours configuré résout-il des titres connus ?"""
+def market_check(symbols: str | None = None) -> dict[str, Any]:
+    """Diagnostic : le fournisseur de cours configuré résout-il ces titres (ISIN séparés par des virgules,
+    40 au plus ; à défaut, quelques titres publics de référence) ?"""
+    wanted = {s.strip().upper(): "EUR" for s in (symbols or "").split(",") if s.strip()}
+    if len(wanted) > 40:
+        raise HTTPException(422, "40 titres au plus")
+    check = wanted or MARKET_CHECK
     pf = Portfolio(transactions=[Transaction(date="2026-01-02", type="buy", symbol=s, quantity=1, price=1, currency=c)
-                                 for s, c in MARKET_CHECK.items()])
+                                 for s, c in check.items()])
     md = load_market(pf)
     return {
         "provider": _provider_name(),
@@ -93,7 +98,7 @@ def market_check() -> dict[str, Any]:
         "as_of": md.as_of.isoformat() if md.as_of else None,
         "lines": {s: {"listing": md.listings.get(s), "currency": md.currencies.get(s),
                       "last": round(md.last_price(s)[0], 4) if md.has(s) else None,
-                      "points": len(md.closes[s]) if md.has(s) else 0} for s in MARKET_CHECK},
+                      "points": len(md.closes[s]) if md.has(s) else 0} for s in check},
         "fx": {c: round(float(v.iloc[-1]), 5) for c, v in md.fx.items() if not v.empty},
     }
 
