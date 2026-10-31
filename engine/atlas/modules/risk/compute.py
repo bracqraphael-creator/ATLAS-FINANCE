@@ -32,7 +32,7 @@ def compute(portfolio: Portfolio, market: MarketData, params: dict[str, Any]) ->
         return result
 
     port = replay_returns(weights, rets)
-    rf = params["risk_free_rate"]
+    rf = params["risk_free_rate"] / 100   # saisi en %
     ann_ret, vol, dvol = annualized_return(port), annualized_vol(port), downside_vol(port)
     mdd, dd_curve = max_drawdown(port)
 

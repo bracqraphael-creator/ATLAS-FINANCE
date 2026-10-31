@@ -1,0 +1,21 @@
+{
+  "id": "plan",
+  "name": "Plan d'investissement",
+  "order": 40,
+  "version": "0.1.0",
+  "family": "long-terme",
+  "priority": "P1",
+  "plan": "free",
+  "params": [
+    {"key": "monthly", "label": "Versement mensuel", "type": "number", "unit": "€", "default": 200, "min": 0, "max": 100000, "step": 10},
+    {"key": "years", "label": "Durée", "type": "number", "unit": "ans", "default": 20, "min": 1, "max": 50, "step": 1},
+    {"key": "initial", "label": "Capital de départ (vide : valeur actuelle du portefeuille)", "type": "number", "unit": "€", "default": null, "min": 0, "max": 100000000, "step": 100},
+    {"key": "increase", "label": "Hausse annuelle des versements", "type": "number", "unit": "%", "default": 0, "min": 0, "max": 20, "step": 0.5},
+    {"key": "return_low", "label": "Rendement annuel, scénario prudent", "type": "number", "unit": "%", "default": 2, "min": -10, "max": 30, "step": 0.5},
+    {"key": "return_mid", "label": "Rendement annuel, scénario central", "type": "number", "unit": "%", "default": 5, "min": -10, "max": 30, "step": 0.5},
+    {"key": "return_high", "label": "Rendement annuel, scénario favorable", "type": "number", "unit": "%", "default": 8, "min": -10, "max": 30, "step": 0.5},
+    {"key": "fees", "label": "Frais annuels (enveloppe, fonds)", "type": "number", "unit": "%", "default": 0.3, "min": 0, "max": 5, "step": 0.05},
+    {"key": "inflation", "label": "Inflation annuelle supposée", "type": "number", "unit": "%", "default": 2, "min": 0, "max": 15, "step": 0.5}
+  ],
+  "data": []
+}

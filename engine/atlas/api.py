@@ -225,6 +225,16 @@ def compute(module_id: str, req: ComputeRequest) -> ModuleResult:
     return _run(module_id, portfolio, req.params)
 
 
+class DemoRequest(BaseModel):
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
 @app.get("/demo/{module_id}", response_model=ModuleResult)
 def demo(module_id: str) -> ModuleResult:
     return _run(module_id, demo_portfolio(), {}, demo=True)
+
+
+@app.post("/demo/{module_id}", response_model=ModuleResult)
+def demo_with_params(module_id: str, req: DemoRequest) -> ModuleResult:
+    """Démonstration avec les réglages saisis (plan d'investissement, période du risque…)."""
+    return _run(module_id, demo_portfolio(), req.params, demo=True)

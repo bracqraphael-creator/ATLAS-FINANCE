@@ -35,7 +35,9 @@ class ModuleSpec:
             key = p["key"]
             if given and key in given:
                 value = given[key]
-                if "min" in p and value < p["min"] or "max" in p and value > p["max"]:
+                if value is not None and not isinstance(value, (int, float)):
+                    raise ValueError(f"Paramètre {key} : nombre attendu")
+                if value is not None and ("min" in p and value < p["min"] or "max" in p and value > p["max"]):
                     raise ValueError(f"Paramètre {key} hors bornes [{p.get('min')}, {p.get('max')}]")
                 params[key] = value
         return params

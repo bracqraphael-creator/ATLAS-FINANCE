@@ -1,0 +1,5 @@
+{
+  "title": "Plan d'investissement",
+  "description": "Projection de versements réguliers selon trois scénarios de rendement, avec vos propres hypothèses. Projection non garantie.",
+  "method": "Capitalisation mensuelle : chaque mois, le capital progresse au taux mensuel équivalent au rendement annuel du scénario diminué des frais annuels, puis le versement du mois s'ajoute (fin de mois). Les versements augmentent chaque année du pourcentage indiqué. Valeur « en euros d'aujourd'hui » : valeur finale divisée par (1 + inflation) puissance nombre d'années. Rendements constants, avant impôts et prélèvements sociaux : les marchés ne progressent pas de façon régulière, les résultats réels s'écarteront de ces trajectoires."
+}

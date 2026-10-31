@@ -33,8 +33,12 @@ export type ModuleResult = {
   disclaimer: string;
 };
 
+export type ModuleParam = {
+  key: string; label: string; type: string; unit?: string; default: number | null; min?: number; max?: number; step?: number;
+};
 export type ModuleManifest = {
   id: string;
+  params?: ModuleParam[];
   name: string;
   family: string;
   priority: string;

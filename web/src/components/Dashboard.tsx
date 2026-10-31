@@ -11,6 +11,7 @@ import { BlockList } from "./blocks/Blocks";
 import { AlertsPanel } from "./AlertsPanel";
 import { ImportWizard } from "./ImportWizard";
 import { OperationsPanel, txKey } from "./OperationsPanel";
+import { ParamsForm } from "./ParamsForm";
 import { Logo } from "./Logo";
 import { PortfolioDialog } from "./PortfolioDialog";
 
@@ -46,6 +47,8 @@ export function Dashboard() {
   const [newPortfolioOpen, setNewPortfolioOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  // Réglages par module (valeurs par défaut du manifest, puis saisies de l'utilisateur, mémorisées)
+  const [paramValues, setParamValues] = useState<Record<string, Record<string, number | null>>>({});
   const [accountFilter, setAccountFilter] = useState("");   // import non enregistré : un compte ou tous
 
   useEffect(() => {
@@ -87,19 +90,22 @@ export function Dashboard() {
 
   // Seule la dernière demande compte : une réponse plus ancienne (portefeuille ou compte précédent) est ignorée
   const latest = useRef(0);
-  const load = useCallback(async (moduleId: string, src: Source) => {
+  const load = useCallback(async (moduleId: string, src: Source, params: Record<string, number | null> = {}) => {
     const ticket = ++latest.current;
     if (src.kind === "portfolio" && src.data.transactions.length === 0) { setResults({}); return; }
     setLoading(true);
     setError(null);
     try {
+      const hasParams = Object.keys(params).length > 0;
       const result = src.kind === "demo"
-        ? await api<ModuleResult>(`demo/${moduleId}`)
+        ? (hasParams
+            ? await api<ModuleResult>(`demo/${moduleId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ params }) })
+            : await api<ModuleResult>(`demo/${moduleId}`))
         : await api<ModuleResult>(`compute/${moduleId}`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             // Les identifiants de base ne servent pas au calcul
-            body: JSON.stringify({ transactions: src.data.transactions, instruments: src.data.instruments },
+            body: JSON.stringify({ transactions: src.data.transactions, instruments: src.data.instruments, params },
                                  (k, v) => (k === "id" || k === "importId" ? undefined : v)),
           });
       if (ticket === latest.current) setResults((r) => ({ ...r, [moduleId]: result }));
@@ -116,7 +122,27 @@ export function Dashboard() {
     return { ...source, data: { ...source.data, transactions: source.data.transactions.filter((t) => t.account === accountFilter) } };
   }, [source, accountFilter]);
 
-  useEffect(() => { load(active, computed); }, [active, computed, load]);
+  const activeSpec = modules.find((m) => m.id === active);
+  const activeParams = useMemo(() => {
+    const declared = activeSpec?.params ?? [];
+    if (!declared.length) return {};
+    const saved = paramValues[active];
+    return saved ?? Object.fromEntries(declared.map((p) => [p.key, p.default]));
+  }, [activeSpec, paramValues, active]);
+
+  // Réglages mémorisés d'une visite à l'autre (navigateur de l'utilisateur)
+  useEffect(() => {
+    try { const v = localStorage.getItem("atlas-params"); if (v) setParamValues(JSON.parse(v)); } catch { /* facultatif */ }
+  }, []);
+  const changeParams = useCallback((v: Record<string, number | null>) => {
+    setParamValues((all) => {
+      const next = { ...all, [active]: v };
+      try { localStorage.setItem("atlas-params", JSON.stringify(next)); } catch { /* facultatif */ }
+      return next;
+    });
+  }, [active]);
+
+  useEffect(() => { load(active, computed, activeParams); }, [active, computed, load, activeParams]);
 
   /** Fichier à plusieurs comptes : chaque compte va dans le portefeuille choisi (créé au besoin). */
   const saveByAccount = async (data: ImportResult, fileName: string, plan: AccountPlan[]) => {
@@ -350,6 +376,9 @@ export function Dashboard() {
 
         <main className="mx-auto max-w-[1180px] space-y-5 px-5 py-6 sm:px-8 sm:py-8">
           {spec?.texts.description && <p className="max-w-[68ch] text-sm text-muted">{spec.texts.description}</p>}
+          {spec?.params && spec.params.length > 0 && (
+            <ParamsForm params={spec.params} values={activeParams} onChange={changeParams} />
+          )}
 
           {source.kind === "import" && source.data.rejected.length > 0 && (
             <details className="rounded-lg border border-warn/30 bg-warn/[0.07] px-4 py-3 text-sm text-warn">
