@@ -59,4 +59,4 @@ def test_fichier_vide():
 def test_fichier_de_demonstration_importe_sans_rejet():
     content = resources.files("atlas").joinpath("data/demo_portfolio.csv").read_bytes()
     r = parse_standard_csv(content)
-    assert not r.rejected and len(r.transactions) == 12
+    assert not r.rejected and len(r.transactions) == 21

@@ -1,0 +1,13 @@
+{
+  "id": "dividends",
+  "name": "Dividendes",
+  "order": 25,
+  "version": "0.1.0",
+  "family": "portefeuille",
+  "priority": "P1",
+  "plan": "free",
+  "params": [],
+  "data": [
+    "fx_rates"
+  ]
+}

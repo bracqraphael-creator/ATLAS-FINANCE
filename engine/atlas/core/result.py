@@ -51,6 +51,15 @@ class Allocation(BaseModel):
     slices: list[dict[str, Any]]    # [{"label": "ETF", "value": 1234.5, "weight": 0.62}]
 
 
+class Bars(BaseModel):
+    """Montants par période (année, mois) : histogramme vertical, valeurs négatives possibles."""
+    type: Literal["bars"] = "bars"
+    id: str
+    title: str
+    unit: str = ""
+    bars: list[dict[str, Any]]      # [{"label": "2024", "value": 123.4}]
+
+
 class Note(BaseModel):
     type: Literal["note"] = "note"
     id: str
@@ -58,7 +67,7 @@ class Note(BaseModel):
     text: str
 
 
-Block = Union[Kpi, Table, TimeSeries, Allocation, Note]
+Block = Union[Kpi, Table, TimeSeries, Allocation, Bars, Note]
 
 
 class ModuleResult(BaseModel):

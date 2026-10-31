@@ -40,7 +40,7 @@ export function formatDate(iso: string | null): string {
 /** Couleur sémantique pour les valeurs de performance (gain / perte). */
 export function toneOf(id: string, value: number | null): string {
   if (value === null) return "";
-  const signed = ["unrealized", "realized", "total_gain", "pnl", "pnl_pct", "annual_return", "max_drawdown", "worst_day", "best_day"];
+  const signed = ["unrealized", "realized", "realized_year", "gains", "losses", "total_gain", "pnl", "pnl_pct", "annual_return", "max_drawdown", "worst_day", "best_day"];
   if (!signed.includes(id) || value === 0) return "";
   return value > 0 ? "text-gain" : "text-loss";
 }

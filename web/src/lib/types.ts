@@ -21,8 +21,9 @@ export type AllocationBlock = {
   title: string;
   slices: { label: string; value: number; weight: number }[];
 };
+export type BarsBlock = { type: "bars"; id: string; title: string; unit: string; bars: { label: string; value: number }[] };
 export type NoteBlock = { type: "note"; id: string; level: "info" | "warning"; text: string };
-export type Block = Kpi | TableBlock | TimeSeriesBlock | AllocationBlock | NoteBlock;
+export type Block = Kpi | TableBlock | TimeSeriesBlock | AllocationBlock | BarsBlock | NoteBlock;
 
 export type ModuleResult = {
   module_id: string;

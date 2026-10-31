@@ -1,6 +1,7 @@
-import type { AllocationBlock, Block, Kpi, NoteBlock, TableBlock, TimeSeriesBlock } from "@/lib/types";
+import type { AllocationBlock, BarsBlock, Block, Kpi, NoteBlock, TableBlock, TimeSeriesBlock } from "@/lib/types";
 import { formatCell, formatDate, formatValue, toneOf } from "@/lib/format";
 import { Donut, SLICE_COLORS } from "./Donut";
+import { ColumnChart } from "./ColumnChart";
 import { LineChart } from "./LineChart";
 
 export function Panel({ title, children, className = "" }: { title?: string; children: React.ReactNode; className?: string }) {
@@ -41,6 +42,9 @@ function KpiStrip({ kpis }: { kpis: Kpi[] }) {
 }
 
 export function DataTable({ table }: { table: TableBlock }) {
+  // Colonnes de texte (nom de ligne, année…) alignées à gauche et tronquées ; chiffres et dates à droite
+  const isText = (c: TableBlock["columns"][number]) =>
+    !c.unit && table.rows.some((r) => typeof r[c.key] === "string") && !table.rows.some((r) => typeof r[c.key] === "number");
   return (
     <section className="overflow-hidden rounded-xl border border-line bg-panel">
       <h3 className="border-b border-line px-5 py-3 text-[13px] font-medium text-muted">{table.title}</h3>
@@ -48,10 +52,10 @@ export function DataTable({ table }: { table: TableBlock }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-faint">
-              {table.columns.map((c, j) => (
-                <th key={c.key} scope="col" className={`whitespace-nowrap px-5 py-2.5 font-medium ${j === 0 ? "" : "text-right"}`}>
+              {table.columns.map((c) => (
+                <th key={c.key} scope="col" className={`whitespace-nowrap px-5 py-2.5 font-medium ${isText(c) ? "" : "text-right"}`}>
                   {c.label}
-                  {c.unit && c.unit !== "devise" ? ` (${c.unit === "EUR" ? "€" : c.unit})` : ""}
+                  {c.unit && c.unit !== "devise" && c.unit !== "date" ? ` (${c.unit === "EUR" ? "€" : c.unit})` : ""}
                 </th>
               ))}
             </tr>
@@ -63,8 +67,11 @@ export function DataTable({ table }: { table: TableBlock }) {
                   const v = row[c.key];
                   const tone = typeof v === "number" ? toneOf(c.key, v) : "";
                   return (
-                    <td key={c.key} className={`whitespace-nowrap px-5 py-3 ${j === 0 ? "font-medium text-text" : `text-right ${tone || "text-text/90"}`}`}>
-                      {typeof v === "number" ? formatCell(v, c.unit === "EUR" ? "EUR" : "") : (v ?? "—")}
+                    <td key={c.key} title={isText(c) && typeof v === "string" ? v : undefined}
+                        className={`whitespace-nowrap px-5 py-3 ${isText(c) ? `max-w-[280px] truncate ${j === 0 ? "font-medium" : ""} text-text`
+                                                                          : `text-right tabular-nums ${tone || "text-text/90"}`}`}>
+                      {typeof v === "number" ? formatCell(v, c.unit === "EUR" ? "EUR" : "")
+                       : c.unit === "date" && typeof v === "string" ? formatDate(v) : (v ?? "—")}
                     </td>
                   );
                 })}
@@ -108,6 +115,7 @@ export function BlockList({ blocks, asOf }: { blocks: Block[]; asOf: string | nu
   const allocations = blocks.filter((b): b is AllocationBlock => b.type === "allocation");
   const tables = blocks.filter((b): b is TableBlock => b.type === "table");
   const notes = blocks.filter((b): b is NoteBlock => b.type === "note");
+  const bars = blocks.filter((b): b is BarsBlock => b.type === "bars");
 
   const heroChart = series.find((s) => s.id === "history");
   const hero = heroChart ? kpis[0] : undefined;
@@ -120,6 +128,11 @@ export function BlockList({ blocks, asOf }: { blocks: Block[]; asOf: string | nu
       {notes.filter((n) => n.level === "warning").map((n) => <Warning key={n.id} note={n} />)}
       {hero && heroChart && <Hero kpi={hero} chart={heroChart} />}
       {stripKpis.length > 0 && <KpiStrip kpis={stripKpis} />}
+      {bars.length > 0 && (
+        <div className={`grid gap-5 ${bars.length > 1 ? "lg:grid-cols-2" : ""}`}>
+          {bars.map((b) => <Panel key={b.id} title={b.title}><ColumnChart block={b} /></Panel>)}
+        </div>
+      )}
 
       {mainAlloc && (
         <div className="grid gap-5 lg:grid-cols-2">

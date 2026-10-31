@@ -42,8 +42,31 @@ class Position:
 
 
 @dataclass
+class Realized:
+    """Une cession : quantité vendue, prix de cession net de frais, prix de revient (PRU) et résultat."""
+    date: date
+    symbol: str
+    quantity: float
+    proceeds_base: float
+    cost_base: float
+
+    @property
+    def pnl_base(self) -> float:
+        return self.proceeds_base - self.cost_base
+
+
+@dataclass
+class Income:
+    date: date
+    symbol: str
+    amount_base: float
+
+
+@dataclass
 class Ledger:
     positions: dict[str, Position] = field(default_factory=dict)
+    realized: list[Realized] = field(default_factory=list)   # cessions, dans l'ordre chronologique
+    income: list[Income] = field(default_factory=list)       # dividendes et coupons
     fees_base: float = 0.0            # frais isolés (droits de garde, etc.)
     deposits_base: float = 0.0
     withdrawals_base: float = 0.0
@@ -99,7 +122,9 @@ def build_ledger(transactions: Iterable[Transaction], fx: FxFn | None = None) ->
             if qty <= 0:
                 continue
             proceeds_base = (qty * t.price - t.fees) * rate
-            pos.realized_pnl_base += proceeds_base - qty * pos.avg_cost_base
+            cost_base = qty * pos.avg_cost_base
+            pos.realized_pnl_base += proceeds_base - cost_base
+            ledger.realized.append(Realized(t.date, t.symbol, qty, proceeds_base, cost_base))
             pos.quantity -= qty
             if pos.quantity <= 1e-12:
                 pos.quantity = 0.0
@@ -115,6 +140,7 @@ def build_ledger(transactions: Iterable[Transaction], fx: FxFn | None = None) ->
 
         elif t.type == TransactionType.DIVIDEND:
             pos.dividends_base += (t.amount or 0.0) * rate
+            ledger.income.append(Income(t.date, t.symbol, (t.amount or 0.0) * rate))
 
         elif t.type == TransactionType.FEE:
             ledger.fees_base += (t.amount or 0.0) * rate

@@ -10,7 +10,6 @@ export const FAMILIES: { id: string; label: string }[] = [
 ];
 
 export const UPCOMING: { family: string; name: string }[] = [
-  { family: "portefeuille", name: "Dividendes" },
   { family: "long-terme", name: "Comparateur d'ETF" },
   { family: "long-terme", name: "Plan d'investissement" },
   { family: "long-terme", name: "Rééquilibrage" },
@@ -19,5 +18,5 @@ export const UPCOMING: { family: string; name: string }[] = [
   { family: "marches", name: "Graphiques et indicateurs" },
   { family: "marches", name: "Force relative" },
   { family: "marches", name: "Backtest" },
-  { family: "fiscalite", name: "Plus-values" },
+  { family: "fiscalite", name: "Revenus à déclarer" },
 ];

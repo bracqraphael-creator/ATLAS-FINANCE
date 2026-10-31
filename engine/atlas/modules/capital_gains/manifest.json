@@ -1,0 +1,13 @@
+{
+  "id": "capital_gains",
+  "name": "Plus-values",
+  "order": 60,
+  "version": "0.1.0",
+  "family": "fiscalite",
+  "priority": "P1",
+  "plan": "free",
+  "params": [],
+  "data": [
+    "fx_rates"
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "title": "Dividendes",
+  "description": "Revenus perçus : dividendes et coupons, par année et par ligne, rendement rapporté au prix de revient.",
+  "method": "Somme des dividendes et coupons enregistrés, convertis en euros au taux du jour du versement. Montants tels qu'indiqués par le courtier (en général nets de la retenue à la source étrangère). Rendement sur coût sur 12 mois : revenus des 12 derniers mois divisés par le capital investi dans les lignes ouvertes (prix de revient, frais inclus). Les 12 derniers mois se comptent à partir de la date des données."
+}
