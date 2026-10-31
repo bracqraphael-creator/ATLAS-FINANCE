@@ -1,47 +1,64 @@
 @import "tailwindcss";
 
+/* ATLAS FINANCE — thème sombre « bleu nuit et laiton » */
 :root {
-  --background: #f6f7f9;
-  --surface: #ffffff;
-  --border: #e3e6eb;
-  --foreground: #14181f;
-  --muted: #5c6573;
-  --accent: #1f5eff;
-  --positive: #0f8a5f;
-  --negative: #c8372d;
-  --warning: #a86200;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0d1015;
-    --surface: #151a21;
-    --border: #262d38;
-    --foreground: #e8ebf0;
-    --muted: #97a0ad;
-    --accent: #6b93ff;
-    --positive: #3cc28f;
-    --negative: #ff7a6e;
-    --warning: #f0a646;
-  }
+  --ink: #0e1420;          /* fond de page */
+  --panel: #151c2b;        /* panneaux */
+  --panel-raised: #1b2335; /* survol, en-têtes de tableau */
+  --line: #232c3f;         /* filets et bordures */
+  --text: #e6eaf2;
+  --muted: #8892a6;
+  --faint: #5d6679;
+  --brass: #c9a45c;        /* accent unique */
+  --brass-soft: rgba(201, 164, 92, 0.14);
+  --gain: #4fbf8f;
+  --loss: #e5675c;
+  --warn: #d9a441;
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-border: var(--border);
-  --color-foreground: var(--foreground);
+  --color-ink: var(--ink);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
+  --color-line: var(--line);
+  --color-text: var(--text);
   --color-muted: var(--muted);
-  --color-accent: var(--accent);
-  --color-positive: var(--positive);
-  --color-negative: var(--negative);
-  --color-warning: var(--warning);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-faint: var(--faint);
+  --color-brass: var(--brass);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-warn: var(--warn);
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--ink);
+  color: var(--text);
   font-family: var(--font-sans);
-  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--brass-soft);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reveal {
+    animation: reveal 480ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }

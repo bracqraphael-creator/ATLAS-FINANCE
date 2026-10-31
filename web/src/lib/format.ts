@@ -36,5 +36,5 @@ export function toneOf(id: string, value: number | null): string {
   if (value === null) return "";
   const signed = ["unrealized", "realized", "total_gain", "pnl", "pnl_pct", "annual_return", "max_drawdown", "worst_day", "best_day"];
   if (!signed.includes(id) || value === 0) return "";
-  return value > 0 ? "text-positive" : "text-negative";
+  return value > 0 ? "text-gain" : "text-loss";
 }

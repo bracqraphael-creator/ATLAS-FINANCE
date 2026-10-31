@@ -1,27 +1,55 @@
 import type { AllocationBlock, Block, Kpi, NoteBlock, TableBlock, TimeSeriesBlock } from "@/lib/types";
 import { formatCell, formatDate, formatValue, toneOf } from "@/lib/format";
+import { Donut, SLICE_COLORS } from "./Donut";
 import { LineChart } from "./LineChart";
 
-export function KpiCard({ kpi }: { kpi: Kpi }) {
+export function Panel({ title, children, className = "" }: { title?: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="rounded-lg border border-border bg-surface px-4 py-3">
-      <div className="text-xs text-muted">{kpi.label}</div>
-      <div className={`mt-1 whitespace-nowrap text-lg font-semibold sm:text-xl ${toneOf(kpi.id, kpi.value)}`}>{formatValue(kpi.value, kpi.unit)}</div>
-      {kpi.hint && <div className="mt-0.5 text-xs text-muted">{kpi.hint}</div>}
+    <section className={`rounded-xl border border-line bg-panel ${className}`}>
+      {title && <h3 className="border-b border-line px-5 py-3 text-[13px] font-medium text-muted">{title}</h3>}
+      <div className="p-5">{children}</div>
+    </section>
+  );
+}
+
+/** Le chiffre principal du module, en grand, avec sa courbe. */
+function Hero({ kpi, chart }: { kpi: Kpi; chart: TimeSeriesBlock }) {
+  return (
+    <section className="reveal rounded-xl border border-line bg-panel p-5 sm:p-6">
+      <div className="mb-5">
+        <div className="text-sm text-muted">{kpi.label}</div>
+        <div className="mt-1 text-4xl font-semibold tracking-tight sm:text-5xl">{formatValue(kpi.value, kpi.unit)}</div>
+      </div>
+      <LineChart series={chart.series} unit={chart.unit} height={260} />
+    </section>
+  );
+}
+
+/** Bandeau d'indicateurs séparés par des filets, plutôt qu'une mosaïque de cartes. */
+function KpiStrip({ kpis }: { kpis: Kpi[] }) {
+  return (
+    <div className="flex flex-wrap gap-px overflow-hidden rounded-xl border border-line bg-line">
+      {kpis.map((k) => (
+        <div key={k.id} className="min-w-[150px] flex-1 basis-[150px] bg-panel px-5 py-4">
+          <div className="text-[13px] text-muted">{k.label}</div>
+          <div className={`mt-1.5 whitespace-nowrap text-xl font-semibold tracking-tight ${toneOf(k.id, k.value)}`}>{formatValue(k.value, k.unit)}</div>
+          {k.hint && <div className="mt-1 text-xs leading-snug text-faint">{k.hint}</div>}
+        </div>
+      ))}
     </div>
   );
 }
 
 export function DataTable({ table }: { table: TableBlock }) {
   return (
-    <div>
-      <h3 className="mb-2 text-sm font-semibold">{table.title}</h3>
-      <div className="overflow-x-auto rounded-lg border border-border">
+    <section className="overflow-hidden rounded-xl border border-line bg-panel">
+      <h3 className="border-b border-line px-5 py-3 text-[13px] font-medium text-muted">{table.title}</h3>
+      <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-background text-left text-xs text-muted">
-            <tr>
+          <thead>
+            <tr className="text-left text-xs text-faint">
               {table.columns.map((c, j) => (
-                <th key={c.key} className={`whitespace-nowrap px-3 py-2 font-medium ${j === 0 ? "" : "text-right"}`}>
+                <th key={c.key} scope="col" className={`whitespace-nowrap px-5 py-2.5 font-medium ${j === 0 ? "" : "text-right"}`}>
                   {c.label}
                   {c.unit && c.unit !== "devise" ? ` (${c.unit === "EUR" ? "€" : c.unit})` : ""}
                 </th>
@@ -30,13 +58,13 @@ export function DataTable({ table }: { table: TableBlock }) {
           </thead>
           <tbody>
             {table.rows.map((row, i) => (
-              <tr key={i} className="border-t border-border">
+              <tr key={i} className="border-t border-line transition-colors hover:bg-panel-raised">
                 {table.columns.map((c, j) => {
                   const v = row[c.key];
-                  const unit = c.unit === "EUR" ? "EUR" : "";
+                  const tone = typeof v === "number" ? toneOf(c.key, v) : "";
                   return (
-                    <td key={c.key} className={`whitespace-nowrap px-3 py-2 ${j === 0 ? "font-medium" : "text-right"} ${typeof v === "number" ? toneOf(c.key, v) : ""}`}>
-                      {typeof v === "number" ? formatCell(v, unit) : (v ?? "—")}
+                    <td key={c.key} className={`whitespace-nowrap px-5 py-3 ${j === 0 ? "font-medium text-text" : `text-right ${tone || "text-text/90"}`}`}>
+                      {typeof v === "number" ? formatCell(v, c.unit === "EUR" ? "EUR" : "") : (v ?? "—")}
                     </td>
                   );
                 })}
@@ -45,71 +73,77 @@ export function DataTable({ table }: { table: TableBlock }) {
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   );
 }
 
-export function AllocationBars({ block }: { block: AllocationBlock }) {
+function Bars({ block }: { block: AllocationBlock }) {
   return (
-    <div>
-      <h3 className="mb-2 text-sm font-semibold">{block.title}</h3>
-      <ul className="space-y-1.5">
-        {block.slices.map((s) => (
-          <li key={s.label} className="text-sm">
-            <div className="flex justify-between gap-2">
-              <span className="truncate">{s.label}</span>
-              <span className="text-muted">{formatValue(s.weight * 100, "%")}</span>
-            </div>
-            <div className="mt-0.5 h-1.5 rounded-full bg-background">
-              <div className="h-1.5 rounded-full bg-accent" style={{ width: `${Math.max(s.weight * 100, 0.5)}%` }} />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ul className="space-y-3">
+      {block.slices.map((s, i) => (
+        <li key={s.label} className="text-sm">
+          <div className="flex justify-between gap-3">
+            <span className="truncate text-text">{s.label}</span>
+            <span className="text-muted">{formatValue(s.weight * 100, "%")}</span>
+          </div>
+          <div className="mt-1.5 h-1 rounded-full bg-line">
+            <div className="h-1 rounded-full" style={{ width: `${Math.max(s.weight * 100, 0.8)}%`, background: i === 0 ? SLICE_COLORS[0] : "var(--muted)" }} />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-export function Note({ note }: { note: NoteBlock }) {
-  const warn = note.level === "warning";
+function Warning({ note }: { note: NoteBlock }) {
   return (
-    <p className={`rounded-md px-3 py-2 text-xs ${warn ? "bg-warning/10 text-warning" : "bg-background text-muted"}`}>{note.text}</p>
+    <p className="rounded-lg border border-warn/30 bg-warn/[0.07] px-4 py-3 text-sm text-warn">{note.text}</p>
   );
 }
 
-export function Series({ block }: { block: TimeSeriesBlock }) {
-  return (
-    <div>
-      <h3 className="mb-2 text-sm font-semibold">{block.title}</h3>
-      <LineChart series={block.series} unit={block.unit} />
-    </div>
-  );
-}
-
-/** Affiche n'importe quel résultat de module : les KPI en grille, puis les autres blocs. */
+/** Rendu générique d'un résultat de module. */
 export function BlockList({ blocks, asOf }: { blocks: Block[]; asOf: string | null }) {
   const kpis = blocks.filter((b): b is Kpi => b.type === "kpi");
+  const series = blocks.filter((b): b is TimeSeriesBlock => b.type === "timeseries");
   const allocations = blocks.filter((b): b is AllocationBlock => b.type === "allocation");
-  const rest = blocks.filter((b) => b.type !== "kpi" && b.type !== "allocation");
+  const tables = blocks.filter((b): b is TableBlock => b.type === "table");
+  const notes = blocks.filter((b): b is NoteBlock => b.type === "note");
+
+  const heroChart = series.find((s) => s.id === "history");
+  const hero = heroChart ? kpis[0] : undefined;
+  const stripKpis = hero ? kpis.slice(1) : kpis;
+  const otherSeries = series.filter((s) => s !== heroChart);
+  const [mainAlloc, ...otherAllocs] = allocations;
+
   return (
     <div className="space-y-5">
-      {kpis.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {kpis.map((k) => <KpiCard key={k.id} kpi={k} />)}
+      {notes.filter((n) => n.level === "warning").map((n) => <Warning key={n.id} note={n} />)}
+      {hero && heroChart && <Hero kpi={hero} chart={heroChart} />}
+      {stripKpis.length > 0 && <KpiStrip kpis={stripKpis} />}
+
+      {mainAlloc && (
+        <div className="grid gap-5 lg:grid-cols-2">
+          <Panel title={mainAlloc.title}><Donut block={mainAlloc} /></Panel>
+          {otherAllocs.slice(0, 1).map((a) => <Panel key={a.id} title={a.title}><Bars block={a} /></Panel>)}
         </div>
       )}
-      {allocations.length > 0 && (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {allocations.map((a) => <AllocationBars key={a.id} block={a} />)}
+      {otherAllocs.length > 1 && (
+        <div className="grid gap-5 md:grid-cols-3">
+          {otherAllocs.slice(1).map((a) => <Panel key={a.id} title={a.title}><Bars block={a} /></Panel>)}
         </div>
       )}
-      {rest.map((b) => {
-        if (b.type === "table") return <DataTable key={b.id} table={b} />;
-        if (b.type === "timeseries") return <Series key={b.id} block={b} />;
-        if (b.type === "note") return <Note key={b.id} note={b} />;
-        return null;
-      })}
-      <p className="text-xs text-muted">Données au {formatDate(asOf)}</p>
+
+      {otherSeries.map((s) => (
+        <Panel key={s.id} title={s.title}>
+          <LineChart series={s.series} unit={s.unit} tone={s.id === "drawdown" ? "loss" : "brass"} />
+        </Panel>
+      ))}
+      {tables.map((t) => <DataTable key={t.id} table={t} />)}
+
+      <div className="space-y-1 text-xs text-faint">
+        {notes.filter((n) => n.level !== "warning").map((n) => <p key={n.id}>{n.text}</p>)}
+        <p>Données au {formatDate(asOf)}</p>
+      </div>
     </div>
   );
 }
