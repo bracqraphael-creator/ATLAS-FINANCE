@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import type { ImportResult, ModuleManifest, ModuleResult } from "@/lib/types";
+import type { AccountPlan, ImportResult, ModuleManifest, ModuleResult } from "@/lib/types";
 import { FAMILIES, UPCOMING } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/client";
 import { createPortfolio, deleteImport, deleteTransactions, listPortfolios, loadPortfolio, saveImport, WRAPPERS, type Portfolio, type PortfolioData } from "@/lib/portfolios";
@@ -44,6 +44,7 @@ export function Dashboard() {
   const [importOpen, setImportOpen] = useState(false);
   const [newPortfolioOpen, setNewPortfolioOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
+  const [accountFilter, setAccountFilter] = useState("");   // import non enregistré : un compte ou tous
 
   useEffect(() => {
     api<ModuleManifest[]>("modules").then(setModules).catch((e) => setError(e.message));
@@ -82,7 +83,10 @@ export function Dashboard() {
     }).catch((e) => setError(e.message));
   }, [user, supabase, openPortfolio]);
 
+  // Seule la dernière demande compte : une réponse plus ancienne (portefeuille ou compte précédent) est ignorée
+  const latest = useRef(0);
   const load = useCallback(async (moduleId: string, src: Source) => {
+    const ticket = ++latest.current;
     if (src.kind === "portfolio" && src.data.transactions.length === 0) { setResults({}); return; }
     setLoading(true);
     setError(null);
@@ -96,17 +100,64 @@ export function Dashboard() {
             body: JSON.stringify({ transactions: src.data.transactions, instruments: src.data.instruments },
                                  (k, v) => (k === "id" || k === "importId" ? undefined : v)),
           });
-      setResults((r) => ({ ...r, [moduleId]: result }));
+      if (ticket === latest.current) setResults((r) => ({ ...r, [moduleId]: result }));
     } catch (e) {
-      setError((e as Error).message);
+      if (ticket === latest.current) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (ticket === latest.current) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(active, source); }, [active, source, load]);
+  // Import non enregistré à plusieurs comptes : les analyses portent sur le compte choisi
+  const computed = useMemo<Source>(() => {
+    if (source.kind !== "import" || !accountFilter) return source;
+    return { ...source, data: { ...source.data, transactions: source.data.transactions.filter((t) => t.account === accountFilter) } };
+  }, [source, accountFilter]);
 
-  const onImported = async (data: ImportResult, fileName: string) => {
+  useEffect(() => { load(active, computed); }, [active, computed, load]);
+
+  /** Fichier à plusieurs comptes : chaque compte va dans le portefeuille choisi (créé au besoin). */
+  const saveByAccount = async (data: ImportResult, fileName: string, plan: AccountPlan[]) => {
+    const current = source.kind === "portfolio" ? source.portfolio : null;
+    const lines: string[] = [];
+    let created: Portfolio[] = [];
+    let main: Portfolio | null = null;
+    let mainCount = -1;
+    for (const p of plan) {
+      let target: Portfolio | undefined;
+      if (p.destination.kind === "existing") {
+        const id = p.destination.id;
+        target = portfolios.find((x) => x.id === id);
+      } else {
+        target = await createPortfolio(supabase, p.destination.name || p.label, p.destination.wrapper);
+        created = [...created, target];
+      }
+      if (!target) continue;
+      const transactions = data.transactions.filter((t) => t.account === p.label);
+      const symbols = new Set(transactions.map((t) => t.symbol).filter(Boolean));
+      const instruments = Object.fromEntries(Object.entries(data.instruments).filter(([k]) => symbols.has(k)));
+      const existing = current && target.id === current.id && source.kind === "portfolio"
+        ? source.data.transactions : (await loadPortfolio(supabase, target.id)).transactions;
+      const { inserted, duplicates } = await saveImport(supabase, target.id, { ...data, transactions, instruments }, fileName, existing);
+      lines.push(`${p.label} → ${target.name} : ${inserted} opération(s)` + (duplicates ? `, ${duplicates} déjà présente(s)` : ""));
+      if (p.count > mainCount) { main = target; mainCount = p.count; }
+    }
+    // Opérations sans compte (rares) : portefeuille courant
+    const orphans = data.transactions.filter((t) => !t.account);
+    if (orphans.length && current && source.kind === "portfolio") {
+      const { inserted } = await saveImport(supabase, current.id, { ...data, transactions: orphans }, fileName, source.data.transactions);
+      lines.push(`sans compte → ${current.name} : ${inserted} opération(s)`);
+    }
+    if (created.length) setPortfolios((list) => [...list, ...created]);
+    setNotice(lines.join(" ; ") + ".");
+    if (main) await openPortfolio(main);
+  };
+
+  const onImported = async (data: ImportResult, fileName: string, plan?: AccountPlan[]) => {
+    if (user && plan?.length) {
+      try { await saveByAccount(data, fileName, plan); } catch (e) { setError((e as Error).message); }
+      return;
+    }
     if (source.kind === "portfolio") {
       try {
         const { inserted, duplicates } = await saveImport(supabase, source.portfolio.id, data, fileName, source.data.transactions);
@@ -120,6 +171,7 @@ export function Dashboard() {
     }
     setResults({});
     setNotice(null);
+    setAccountFilter("");
     setSource({ kind: "import", fileName, data });
   };
 
@@ -222,6 +274,14 @@ export function Dashboard() {
                 Opérations
               </button>
             )}
+            {source.kind === "import" && source.data.accounts?.length > 1 && (
+              <select aria-label="Compte affiché" value={accountFilter}
+                      onChange={(e) => { setResults({}); setAccountFilter(e.target.value); }}
+                      className="max-w-[220px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-text focus:border-brass focus:outline-none">
+                <option value="">Tous les comptes</option>
+                {source.data.accounts.map((a) => <option key={a.label} value={a.label}>{a.label} ({a.count})</option>)}
+              </select>
+            )}
             {source.kind === "import" && (
               <button onClick={() => { setResults({}); setSource({ kind: "demo" }); }}
                       className="rounded-lg border border-line px-3.5 py-2 text-sm text-muted transition-colors hover:border-faint hover:text-text">
@@ -245,7 +305,10 @@ export function Dashboard() {
           </div>
         </header>
         <ImportWizard open={importOpen} onClose={() => setImportOpen(false)} onImported={onImported}
-                      target={source.kind === "portfolio" ? source.portfolio.name : null} />
+                      target={source.kind === "portfolio" ? source.portfolio.name : null}
+                      portfolios={user ? portfolios : undefined}
+                      currentId={source.kind === "portfolio" ? source.portfolio.id : null}
+                      currentEmpty={source.kind === "portfolio" && source.data.transactions.length === 0} />
         {source.kind !== "demo" && (
           <OperationsPanel open={opsOpen} onClose={() => setOpsOpen(false)}
                            title={source.kind === "portfolio" ? source.portfolio.name : source.fileName}

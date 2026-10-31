@@ -158,3 +158,32 @@ def test_dates(raw):
 ])
 def test_types(raw, expected):
     assert parse_type(raw) == expected
+
+
+# --------------------------------------------------------------------------- Plusieurs comptes dans un fichier
+def test_enveloppe_devinee_depuis_le_nom_du_compte():
+    from atlas.core.importers.universal import guess_wrapper
+    cases = {"Compte PEA": "pea", "PEA-PME": "pea_pme", "PEA PME Boursorama": "pea_pme", "Compte courant": "cto",
+             "Compte-titres ordinaire": "cto", "CTO": "cto", "Assurance vie Linxea": "assurance_vie",
+             "PER individuel": "per", "Portefeuille crypto": "crypto", "Livret A": "other"}
+    assert {k: guess_wrapper(k) for k in cases} == cases
+
+
+def test_csv_avec_colonne_compte_repartit_les_operations():
+    from atlas.core.importers import parse_file
+    csv = ("Date;Compte;Opération;ISIN;Libellé;Quantité;Cours\n"
+           "02/01/2024;PEA;Achat;FR0011550185;BNP S&P 500;10;20\n"
+           "03/01/2024;Compte-titres;Achat;US0378331005;Apple;1;180\n"
+           "04/01/2024;PEA;Achat;FR0011550185;BNP S&P 500;5;21\n").encode()
+    r = parse_file(csv)
+    assert not r.rejected
+    assert [t.account for t in r.transactions] == ["PEA", "Compte-titres", "PEA"]
+    assert [(a.label, a.wrapper, a.count, a.suggested_name) for a in r.accounts] == [
+        ("PEA", "pea", 2, "PEA"), ("Compte-titres", "cto", 1, "Compte-titres")]
+    assert any("2 comptes distincts" in n for n in r.notes)
+
+
+def test_fichier_sans_compte():
+    from atlas.core.importers import parse_file
+    r = parse_file(b"Date;Operation;ISIN;Quantite;Cours\n02/01/2024;Achat;FR0011550185;10;20\n")
+    assert r.accounts == [] and r.transactions[0].account is None

@@ -160,8 +160,8 @@ def read_trade_republic(pages: list[Any]) -> Sheet:
                      else f", solde final recalculé {_fr(a.balance)} € ≠ {_fr(a.end)} € indiqué : vérifiez l'aperçu")
         notes.append(line + ".")
     if len([a for a in accounts if a.count]) > 1:
-        notes.append("Plusieurs comptes sont réunis dans ce portefeuille ; les virements entre eux s'annulent "
-                     "(colonne « Compte » dans l'aperçu).")
+        notes.append("Les virements entre comptes (« Versement PEA ») figurent comme retrait d'un côté et "
+                     "versement de l'autre.")
     notes.append("Le relevé ne donne pas le cours d'exécution : prix unitaire = (montant ∓ frais) / quantité.")
     if fee_count:
         notes.append(f"{fee_count} ordre(s) ponctuel(s) : frais de 1 € par ordre (tarif Trade Republic) séparés du "

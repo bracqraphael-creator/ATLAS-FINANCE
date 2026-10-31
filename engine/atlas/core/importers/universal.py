@@ -36,6 +36,7 @@ FIELDS: list[tuple[str, str]] = [
     ("asset_class", "Classe d'actif"),
     ("country", "Pays ou zone"),
     ("sector", "Secteur"),
+    ("account", "Compte"),
 ]
 REQUIRED = ("date",)
 
@@ -63,6 +64,8 @@ SYNONYMS: dict[str, list[str]] = {
     "asset_class": ["asset class", "asset_class", "classe d actif", "classe", "type d actif", "categorie"],
     "country": ["country", "pays", "zone", "zone geographique", "land"],
     "sector": ["sector", "secteur", "industrie", "branche"],
+    "account": ["compte", "account", "account name", "nom du compte", "type de compte", "enveloppe", "konto",
+                "depot", "portefeuille", "portfolio", "sous compte", "compte titres", "wrapper"],
 }
 
 # Mots-clés de type d'opération (contenus dans le texte de la cellule)
@@ -111,6 +114,36 @@ class RejectedRow(BaseModel):
     reason: str
 
 
+class AccountSummary(BaseModel):
+    """Un compte distinct trouvé dans le fichier (PEA, compte-titres…), avec l'enveloppe devinée."""
+    label: str
+    wrapper: str            # pea | pea_pme | cto | assurance_vie | per | crypto | other
+    count: int
+    suggested_name: str
+
+
+WRAPPER_LABELS = {"pea": "PEA", "pea_pme": "PEA-PME", "cto": "Compte-titres", "assurance_vie": "Assurance vie",
+                  "per": "PER", "crypto": "Crypto", "other": "Autre"}
+
+
+def guess_wrapper(label: str) -> str:
+    """« Compte PEA » -> pea ; « Compte courant » (courtier en ligne : compte titres et espèces) -> cto…"""
+    n = normalize(label)
+    if re.search(r"\bpea\s*-?\s*pme\b", n):
+        return "pea_pme"
+    if re.search(r"\bpea\b", n):
+        return "pea"
+    if re.search(r"assurance\s*vie|\bav\b|life insurance", n):
+        return "assurance_vie"
+    if re.search(r"\bper\b|\bperp\b|perin|retraite", n):
+        return "per"
+    if re.search(r"crypto|bitcoin|wallet", n):
+        return "crypto"
+    if re.search(r"\bcto\b|titres|courant|depot|securities|brokerage|ordinaire|individual|trading|invest", n):
+        return "cto"
+    return "other"
+
+
 class ImportResult(BaseModel):
     format: str = "generic"
     format_label: str = "Format détecté automatiquement"
@@ -118,6 +151,7 @@ class ImportResult(BaseModel):
     instruments: dict[str, Instrument] = Field(default_factory=dict)
     rejected: list[RejectedRow] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    accounts: list[AccountSummary] = Field(default_factory=list)   # vide si le fichier ne distingue pas de comptes
 
 
 class Analysis(BaseModel):
@@ -322,6 +356,8 @@ def convert(sheet: Sheet, mapping: dict[str, int], extras: dict[str, int] | None
             symbol = _cell(row, mapping, "symbol") or isin or _cell(row, mapping, "name")
             symbol = str(symbol).strip() if symbol is not None else None
             name = _cell(row, mapping, "name")
+            account = _cell(row, mapping, "account")
+            account = re.sub(r"\s+", " ", str(account)).strip() or None if account is not None else None
 
             ttype = parse_type(_cell(row, mapping, "type")) if "type" in mapping else None
             if ttype is None and "type" not in mapping and describes_operation:
@@ -363,6 +399,7 @@ def convert(sheet: Sheet, mapping: dict[str, int], extras: dict[str, int] | None
                 price=price or 0.0, currency=currency,
                 fees=abs(fees) if fees and (fee_currency in (None, currency)) else 0.0,
                 amount=abs(amount) if amount is not None and ttype in ("dividend", "fee", "deposit", "withdrawal") else None,
+                account=account,
             )
             if tx.type in (TransactionType.BUY, TransactionType.SELL):
                 if not tx.symbol:
@@ -385,7 +422,7 @@ def convert(sheet: Sheet, mapping: dict[str, int], extras: dict[str, int] | None
         # enregistrés comme frais séparés plutôt que convertis à un taux supposé.
         if fees and fee_currency and fee_currency != currency:
             result.transactions.append(Transaction(date=d, type=TransactionType.FEE, amount=abs(fees),
-                                                   currency=fee_currency, symbol=None))
+                                                   currency=fee_currency, symbol=None, account=account))
         if tx.symbol and tx.symbol not in result.instruments:
             cls = CLASS_ALIASES.get(normalize(_cell(row, mapping, "asset_class") or ""), "other")
             result.instruments[tx.symbol] = Instrument(
@@ -402,7 +439,24 @@ def convert(sheet: Sheet, mapping: dict[str, int], extras: dict[str, int] | None
         result.notes.append("Avis d'opéré lus dans le PDF : vérifiez les montants dans l'aperçu.")
     if inferred_from_sign and not sheet.source.startswith("pdf"):
         result.notes.append(f"{inferred_from_sign} opération(s) classées achat ou vente selon le signe de la quantité.")
-    if any(t.symbol and len(t.symbol) == 12 and t.symbol[:2].isalpha() and t.symbol[2:].isalnum()
-           for t in result.transactions if t.symbol):
-        result.notes.append("Titres identifiés par leur code ISIN : les cours seront rattachés automatiquement une fois le fournisseur de données branché.")
+    result.accounts = summarize_accounts(result.transactions, fmt, fmt_label)
+    if len(result.accounts) > 1:
+        result.notes.append(f"{len(result.accounts)} comptes distincts dans ce fichier : "
+                            + ", ".join(f"{a.label} ({a.count} opérations, {WRAPPER_LABELS[a.wrapper]})" for a in result.accounts)
+                            + ". Chacun peut être enregistré dans son propre portefeuille.")
     return result
+
+
+def summarize_accounts(transactions: list[Transaction], fmt: str, fmt_label: str) -> list[AccountSummary]:
+    counts: dict[str, int] = {}
+    for t in transactions:
+        if t.account:
+            counts[t.account] = counts.get(t.account, 0) + 1
+    broker = fmt_label.split(",")[0].strip() if fmt in ("pdf-traderepublic", "degiro") else ""
+    out = []
+    for label, n in counts.items():
+        wrapper = guess_wrapper(label)
+        short = WRAPPER_LABELS[wrapper] if wrapper != "other" else label
+        out.append(AccountSummary(label=label, wrapper=wrapper, count=n,
+                                  suggested_name=f"{broker} · {short}" if broker else label))
+    return sorted(out, key=lambda a: -a.count)

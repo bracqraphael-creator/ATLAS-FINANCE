@@ -54,6 +54,14 @@ export type Transaction = {
   currency: string;
   fees: number;
   amount: number | null;
+  account?: string | null;   // compte d'origine dans le fichier importé
+};
+export type AccountSummary = { label: string; wrapper: string; count: number; suggested_name: string };
+/** Destination d'un compte du fichier : portefeuille existant ou nouveau portefeuille. */
+export type AccountPlan = {
+  label: string;
+  count: number;
+  destination: { kind: "existing"; id: string } | { kind: "new"; name: string; wrapper: string };
 };
 export type ImportResult = {
   format: string;
@@ -62,6 +70,7 @@ export type ImportResult = {
   instruments: Record<string, unknown>;
   rejected: { line: number; reason: string }[];
   notes: string[];
+  accounts: AccountSummary[];
 };
 export type ImportAnalysis = {
   format: string;

@@ -46,6 +46,7 @@ class Transaction(BaseModel):
     currency: str = "EUR"
     fees: float = 0.0
     amount: float | None = None
+    account: str | None = None   # compte d'origine dans le fichier importé (« Compte PEA »…), si le fichier en distingue
 
     @field_validator("currency")
     @classmethod

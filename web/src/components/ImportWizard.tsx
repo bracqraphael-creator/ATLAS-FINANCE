@@ -1,12 +1,39 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ImportAnalysis, ImportResult } from "@/lib/types";
+import type { AccountPlan, ImportAnalysis, ImportResult } from "@/lib/types";
+import { WRAPPERS } from "@/lib/portfolios";
 import { formatCell, formatDate, TYPE_LABELS } from "@/lib/format";
 const REQUIRED = new Set(["date"]);
 const STORAGE_PREFIX = "atlas-mapping:";
 
-type Props = { open: boolean; onClose: () => void; onImported: (result: ImportResult, fileName: string) => void; target?: string | null };
+type PortfolioRef = { id: string; name: string; wrapper: string };
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  onImported: (result: ImportResult, fileName: string, plan?: AccountPlan[]) => void;
+  target?: string | null;
+  /** Portefeuilles de l'utilisateur connecté : chaque compte du fichier peut aller dans le sien. */
+  portfolios?: PortfolioRef[];
+  currentId?: string | null;
+  currentEmpty?: boolean;
+};
+
+/** Destination proposée pour chaque compte : portefeuille du même nom (réimport), sinon le portefeuille courant
+ *  s'il est vide et de la même enveloppe, sinon un nouveau portefeuille. */
+function defaultPlan(result: ImportResult, portfolios: PortfolioRef[], currentId?: string | null, currentEmpty?: boolean): AccountPlan[] {
+  let currentUsed = false;
+  return result.accounts.map((a) => {
+    const same = portfolios.find((p) => p.name.trim().toLowerCase() === a.suggested_name.trim().toLowerCase());
+    if (same) return { label: a.label, count: a.count, destination: { kind: "existing", id: same.id } };
+    const current = portfolios.find((p) => p.id === currentId);
+    if (current && currentEmpty && !currentUsed && current.wrapper === a.wrapper) {
+      currentUsed = true;
+      return { label: a.label, count: a.count, destination: { kind: "existing", id: current.id } };
+    }
+    return { label: a.label, count: a.count, destination: { kind: "new", name: a.suggested_name, wrapper: a.wrapper } };
+  });
+}
 
 async function post<T>(path: string, form: FormData): Promise<T> {
   const res = await fetch(`/api/engine/${path}`, { method: "POST", body: form });
@@ -24,7 +51,8 @@ function saveMapping(headers: string[], mapping: Record<string, number>) {
   try { localStorage.setItem(signature(headers), JSON.stringify(mapping)); } catch { /* stockage indisponible */ }
 }
 
-export function ImportWizard({ open, onClose, onImported, target }: Props) {
+export function ImportWizard({ open, onClose, onImported, target, portfolios, currentId, currentEmpty }: Props) {
+  const [plan, setPlan] = useState<AccountPlan[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<ImportAnalysis | null>(null);
   const [mapping, setMapping] = useState<Record<string, number>>({});
@@ -37,7 +65,7 @@ export function ImportWizard({ open, onClose, onImported, target }: Props) {
   const input = useRef<HTMLInputElement>(null);
 
   const reset = useCallback(() => {
-    setFile(null); setAnalysis(null); setMapping({}); setPreview(null); setError(null); setRemembered(false);
+    setFile(null); setAnalysis(null); setMapping({}); setPreview(null); setError(null); setRemembered(false); setPlan([]);
   }, []);
 
   useEffect(() => {
@@ -73,16 +101,26 @@ export function ImportWizard({ open, onClose, onImported, target }: Props) {
       const custom = JSON.stringify(mapping) !== JSON.stringify(analysis.mapping);
       if (custom) form.append("mapping", JSON.stringify(mapping));
       if (custom && Object.keys(analysis.extras).length) form.append("extras", JSON.stringify(analysis.extras));
-      try { setPreview(await post<ImportResult>("imports", form)); setError(null); }
+      try {
+        const result = await post<ImportResult>("imports", form);
+        setPreview(result);
+        setPlan((old) => {
+          // Les choix déjà faits pour les mêmes comptes sont conservés quand la correspondance change
+          const fresh = defaultPlan(result, portfolios ?? [], currentId, currentEmpty);
+          return fresh.map((p) => ({ ...p, destination: old.find((o) => o.label === p.label)?.destination ?? p.destination }));
+        });
+        setError(null);
+      }
       catch (e) { setError((e as Error).message); }
     }, 250);
     return () => clearTimeout(handle);
-  }, [file, analysis, mapping]);
+  }, [file, analysis, mapping, portfolios, currentId, currentEmpty]);
 
   const confirm = () => {
     if (!preview || !analysis || !file) return;
     saveMapping(analysis.headers, mapping);
-    onImported(preview, file.name);
+    const multi = preview.accounts.length > 1 && portfolios;
+    onImported(preview, file.name, multi ? plan : undefined);
     onClose();
   };
 
@@ -174,6 +212,59 @@ export function ImportWizard({ open, onClose, onImported, target }: Props) {
               </section>
 
               <section className="min-w-0">
+                {preview && preview.accounts.length > 1 && (
+                  <div className="mb-4 rounded-lg border border-brass/30 bg-brass/[0.06] p-4">
+                    <h3 className="text-sm font-medium text-text">{preview.accounts.length} comptes détectés dans ce fichier</h3>
+                    {portfolios ? (
+                      <>
+                        <p className="mt-0.5 text-xs text-muted">Chaque compte est enregistré dans son portefeuille. Vérifiez l&apos;enveloppe et la destination.</p>
+                        <div className="mt-3 space-y-2">
+                          {plan.map((p, k) => {
+                            const dest = p.destination;
+                            const update = (d: AccountPlan["destination"]) =>
+                              setPlan((all) => all.map((x, j) => (j === k ? { ...x, destination: d } : x)));
+                            return (
+                              <div key={p.label} className="grid items-center gap-2 text-[13px] sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]">
+                                <div className="min-w-0">
+                                  <div className="truncate text-text">{p.label}</div>
+                                  <div className="text-xs text-faint">{p.count} opération(s)</div>
+                                </div>
+                                <select aria-label={`Destination de ${p.label}`}
+                                        value={dest.kind === "existing" ? dest.id : "__new"}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          const acc = preview.accounts.find((a) => a.label === p.label);
+                                          update(v === "__new" ? { kind: "new", name: acc?.suggested_name ?? p.label, wrapper: acc?.wrapper ?? "other" }
+                                                               : { kind: "existing", id: v });
+                                        }}
+                                        className="min-w-0 rounded-md border border-line bg-ink px-2 py-1.5 text-text">
+                                  <option value="__new">Nouveau portefeuille</option>
+                                  {portfolios.map((pf) => <option key={pf.id} value={pf.id}>{pf.name}</option>)}
+                                </select>
+                                {dest.kind === "new" ? (
+                                  <div className="flex min-w-0 gap-2">
+                                    <input value={dest.name} aria-label={`Nom du portefeuille pour ${p.label}`}
+                                           onChange={(e) => update({ ...dest, name: e.target.value })}
+                                           className="min-w-0 flex-1 rounded-md border border-line bg-ink px-2 py-1.5 text-text" />
+                                    <select value={dest.wrapper} aria-label={`Enveloppe de ${p.label}`}
+                                            onChange={(e) => update({ ...dest, wrapper: e.target.value })}
+                                            className="rounded-md border border-line bg-ink px-2 py-1.5 text-text">
+                                      {WRAPPERS.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
+                                    </select>
+                                  </div>
+                                ) : <span className="text-xs text-faint">Ajouté au portefeuille existant (doublons ignorés)</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="mt-0.5 text-xs text-muted">
+                        {preview.accounts.map((a) => `${a.label} (${a.count})`).join(", ")}. Vous pourrez afficher chaque compte séparément ; connectez-vous pour les enregistrer chacun dans un portefeuille.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="mb-2 flex items-baseline justify-between gap-3">
                   <h3 className="text-[13px] font-medium text-muted">Aperçu</h3>
                   {preview && (
@@ -230,7 +321,7 @@ export function ImportWizard({ open, onClose, onImported, target }: Props) {
             {analysis && (
               <button onClick={confirm} disabled={!count || blocked}
                       className="rounded-lg bg-brass px-4 py-2 text-sm font-medium text-ink hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
-                Importer {count} opération{count > 1 ? "s" : ""}
+                Importer {count} opération{count > 1 ? "s" : ""}{preview && preview.accounts.length > 1 && portfolios ? ` dans ${preview.accounts.length} portefeuilles` : ""}
               </button>
             )}
           </div>
