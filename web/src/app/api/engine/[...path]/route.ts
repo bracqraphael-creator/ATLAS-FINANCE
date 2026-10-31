@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 
 const ENGINE_URL = process.env.ENGINE_URL ?? "http://localhost:8000";
-const ALLOWED = /^(health|modules|imports|compute\/[a-z_]+|demo\/[a-z_]+)$/;
+const ALLOWED = /^(health|modules|imports|imports\/analyze|compute\/[a-z_]+|demo\/[a-z_]+)$/;
 
 async function relay(req: NextRequest, path: string[]) {
   const target = path.join("/");

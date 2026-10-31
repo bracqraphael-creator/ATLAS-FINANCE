@@ -1,12 +1,28 @@
-"""Imports de portefeuilles. Un fichier par format de courtier ; `parse_file` choisit le bon."""
+"""Imports de portefeuilles.
 
-from .standard_csv import ImportResult, RejectedRow, parse_standard_csv
+`analyze_file` devine le format et la correspondance des colonnes ; `parse_file` convertit le fichier
+(avec la correspondance devinée, ou celle corrigée par l'utilisateur).
+Préréglages courtiers : voir `universal.py` (DEGIRO pour l'instant ; d'autres s'ajoutent à partir de vrais fichiers).
+"""
+
+from __future__ import annotations
+
+from .reader import Sheet, read_table
+from .standard_csv import parse_standard_csv
+from .universal import Analysis, ImportResult, RejectedRow, analyze, convert
 
 
-def parse_file(content: bytes | str) -> ImportResult:
-    """Détecte le format puis importe. Seul le format standard ATLAS existe pour l'instant ;
-    les formats courtiers (Trade Republic, Degiro, Boursorama…) viendront s'ajouter ici."""
-    return parse_standard_csv(content)
+def analyze_file(content: bytes | str, filename: str = "") -> Analysis:
+    return analyze(read_table(content, filename))
 
 
-__all__ = ["ImportResult", "RejectedRow", "parse_file", "parse_standard_csv"]
+def parse_file(content: bytes | str, filename: str = "", mapping: dict[str, int] | None = None,
+               extras: dict[str, int] | None = None) -> ImportResult:
+    sheet = read_table(content, filename)
+    detected = analyze(sheet)
+    if mapping is None:
+        return convert(sheet, detected.mapping, detected.extras, detected.format, detected.format_label)
+    return convert(sheet, mapping, extras or {}, "custom", "Correspondance personnalisée")
+
+
+__all__ = ["Analysis", "ImportResult", "RejectedRow", "Sheet", "analyze_file", "parse_file", "parse_standard_csv"]

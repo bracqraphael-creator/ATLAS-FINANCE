@@ -41,10 +41,34 @@ export type ModuleManifest = {
   texts: { title?: string; description?: string; method?: string };
 };
 
-export type Transaction = Record<string, unknown>;
+export type Transaction = {
+  date: string;
+  type: "buy" | "sell" | "dividend" | "fee" | "deposit" | "withdrawal" | "split";
+  symbol: string | null;
+  name: string | null;
+  quantity: number;
+  price: number;
+  currency: string;
+  fees: number;
+  amount: number | null;
+};
 export type ImportResult = {
   format: string;
+  format_label: string;
   transactions: Transaction[];
   instruments: Record<string, unknown>;
   rejected: { line: number; reason: string }[];
+  notes: string[];
+};
+export type ImportAnalysis = {
+  format: string;
+  format_label: string;
+  confidence: number;
+  headers: string[];
+  mapping: Record<string, number>;
+  extras: Record<string, number>;
+  fields: { key: string; label: string }[];
+  missing: string[];
+  sample: string[][];
+  row_count: number;
 };

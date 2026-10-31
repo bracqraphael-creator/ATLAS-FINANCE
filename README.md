@@ -36,11 +36,20 @@ L'interface appelle le moteur à l'adresse définie dans `ENGINE_URL` (par défa
 Créer un projet Supabase (région Europe), puis appliquer `supabase/migrations/0001_init.sql`
 (éditeur SQL de Supabase ou `supabase db push`).
 
-## Format d'import CSV standard
+## Import des opérations
+L'assistant d'import (bouton « Importer des opérations ») accepte les fichiers **CSV et Excel** :
+- **DEGIRO** (export « Transactions », FR/EN) est reconnu automatiquement ;
+- les autres exports (courtiers, banques, logiciels) sont analysés : colonnes reconnues en français, anglais,
+  allemand et néerlandais, type d'opération lu dans une colonne dédiée, dans le libellé (« ACHAT COMPTANT… »)
+  ou déduit du signe de la quantité ; l'utilisateur vérifie et corrige la correspondance avant d'importer ;
+- la correspondance validée est mémorisée pour les imports suivants du même format.
+
+Code : `engine/atlas/core/importers/` (`reader.py` lecture, `universal.py` détection et conversion).
+Pour ajouter un préréglage courtier : un vrai fichier d'export (montants modifiés) + un test dans
+`engine/tests/test_universal_import.py`.
+
+Format standard ATLAS (le plus simple à produire à la main) :
 ```csv
-date,type,symbol,name,quantity,price,currency,fees,asset_class,country,sector
-2024-01-15,buy,CW8,Amundi MSCI World,10,450.20,EUR,1.99,etf,World,Diversifié
+date,type,symbol,name,quantity,price,currency,fees,amount,asset_class,country,sector
+2024-01-15,buy,CW8,Amundi MSCI World,10,450.20,EUR,1.99,,etf,Monde,Diversifié
 ```
-Types acceptés : `buy`, `sell`, `dividend`, `fee`, `deposit`, `withdrawal`.
-Des connecteurs spécifiques par courtier (Trade Republic, Degiro, Boursorama…) s'ajoutent dans
-`engine/atlas/core/importers/`.

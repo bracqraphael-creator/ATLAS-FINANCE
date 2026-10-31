@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ImportResult, ModuleManifest, ModuleResult } from "@/lib/types";
 import { FAMILIES, UPCOMING } from "@/lib/catalog";
 import { BlockList } from "./blocks/Blocks";
+import { ImportWizard } from "./ImportWizard";
 import { Logo } from "./Logo";
 
 type Source = { kind: "demo" } | { kind: "import"; fileName: string; data: ImportResult };
@@ -52,20 +53,10 @@ export function Dashboard() {
 
   useEffect(() => { load(active, source); }, [active, source, load]);
 
-  const onFile = async (file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-    try {
-      const data = await api<ImportResult>("imports", { method: "POST", body: form });
-      if (data.transactions.length === 0) {
-        setError(`Aucune opération lisible dans ${file.name}. ${data.rejected[0]?.reason ?? ""}`);
-        return;
-      }
-      setResults({});
-      setSource({ kind: "import", fileName: file.name, data });
-    } catch (e) {
-      setError((e as Error).message);
-    }
+  const [importOpen, setImportOpen] = useState(false);
+  const onImported = (data: ImportResult, fileName: string) => {
+    setResults({});
+    setSource({ kind: "import", fileName, data });
   };
 
   const current = results[active];
@@ -124,13 +115,13 @@ export function Dashboard() {
                 Revenir à la démo
               </button>
             )}
-            <label className="cursor-pointer rounded-lg bg-brass px-3.5 py-2 text-sm font-medium text-ink transition-opacity focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-brass hover:opacity-90">
-              Importer un fichier CSV
-              <input type="file" accept=".csv,text/csv" className="sr-only"
-                     onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
-            </label>
+            <button onClick={() => setImportOpen(true)}
+                    className="rounded-lg bg-brass px-3.5 py-2 text-sm font-medium text-ink transition-opacity hover:opacity-90">
+              Importer des opérations
+            </button>
           </div>
         </header>
+        <ImportWizard open={importOpen} onClose={() => setImportOpen(false)} onImported={onImported} />
 
         <main className="mx-auto max-w-[1180px] space-y-5 px-5 py-6 sm:px-8 sm:py-8">
           {spec?.texts.description && <p className="max-w-[68ch] text-sm text-muted">{spec.texts.description}</p>}

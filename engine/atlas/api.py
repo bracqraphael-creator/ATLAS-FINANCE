@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 from importlib import resources
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import __version__
-from .core.importers import ImportResult, parse_file
+from .core.importers import Analysis, ImportResult, analyze_file, parse_file
 from .core.market import MarketData
 from .core.models import Instrument, Portfolio, Transaction
 from .core.providers import DemoProvider, EodhdProvider
@@ -62,15 +63,39 @@ def list_modules() -> list[dict[str, Any]]:
     return [{**spec.manifest, "texts": spec.texts} for spec in registry().values()]
 
 
-@app.post("/imports", response_model=ImportResult)
-async def import_file(file: UploadFile = File(...)) -> ImportResult:
+async def _read_upload(file: UploadFile) -> bytes:
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "Fichier trop volumineux (5 Mo maximum)")
+    if not content.strip():
+        raise HTTPException(400, "Le fichier est vide")
+    return content
+
+
+@app.post("/imports/analyze", response_model=Analysis)
+async def analyze_import(file: UploadFile = File(...)) -> Analysis:
+    """Devine le format et la correspondance des colonnes, sans rien importer."""
+    content = await _read_upload(file)
     try:
-        return parse_file(content)
-    except UnicodeDecodeError as exc:
-        raise HTTPException(400, "Fichier illisible : un CSV encodé en UTF-8 est attendu") from exc
+        return analyze_file(content, file.filename or "")
+    except Exception as exc:  # fichier corrompu, Excel protégé…
+        raise HTTPException(400, f"Fichier illisible : {exc}") from exc
+
+
+@app.post("/imports", response_model=ImportResult)
+async def import_file(file: UploadFile = File(...), mapping: str | None = Form(None),
+                      extras: str | None = Form(None)) -> ImportResult:
+    """Convertit le fichier en transactions. `mapping` (JSON champ -> index de colonne) est optionnel."""
+    content = await _read_upload(file)
+    try:
+        parsed_mapping = {k: int(v) for k, v in json.loads(mapping).items()} if mapping else None
+        parsed_extras = {k: int(v) for k, v in json.loads(extras).items()} if extras else None
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(422, "Correspondance de colonnes invalide") from exc
+    try:
+        return parse_file(content, file.filename or "", parsed_mapping, parsed_extras)
+    except Exception as exc:
+        raise HTTPException(400, f"Fichier illisible : {exc}") from exc
 
 
 def _run(module_id: str, portfolio: Portfolio, params: dict[str, Any]) -> ModuleResult:
