@@ -8,6 +8,7 @@ import { FAMILIES, UPCOMING } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/client";
 import { createPortfolio, deleteImport, deleteTransactions, listPortfolios, loadPortfolio, saveImport, WRAPPERS, type Portfolio, type PortfolioData } from "@/lib/portfolios";
 import { BlockList } from "./blocks/Blocks";
+import { AlertsPanel } from "./AlertsPanel";
 import { ImportWizard } from "./ImportWizard";
 import { OperationsPanel, txKey } from "./OperationsPanel";
 import { Logo } from "./Logo";
@@ -44,6 +45,7 @@ export function Dashboard() {
   const [importOpen, setImportOpen] = useState(false);
   const [newPortfolioOpen, setNewPortfolioOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const [accountFilter, setAccountFilter] = useState("");   // import non enregistré : un compte ou tous
 
   useEffect(() => {
@@ -203,6 +205,24 @@ export function Dashboard() {
     await openPortfolio(p);
   };
 
+  // Lignes détenues du portefeuille ouvert (quantités recalculées depuis les opérations), pour cibler une alerte
+  const heldLines = useMemo(() => {
+    if (source.kind !== "portfolio") return [];
+    const qty = new Map<string, number>();
+    const names = new Map<string, string>();
+    for (const t of [...source.data.transactions].sort((a, b) => (a.date < b.date ? -1 : 1))) {
+      if (!t.symbol) continue;
+      const q = qty.get(t.symbol) ?? 0;
+      if (t.type === "buy") qty.set(t.symbol, q + t.quantity);
+      else if (t.type === "sell") qty.set(t.symbol, Math.max(q - t.quantity, 0));
+      else if (t.type === "split" && t.quantity > 0) qty.set(t.symbol, q * t.quantity);
+      if (t.name) names.set(t.symbol, t.name);
+    }
+    return [...qty].filter(([, q]) => q > 1e-9).map(([symbol]) => ({
+      symbol, name: source.data.instruments[symbol]?.name ?? names.get(symbol) ?? symbol,
+    })).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  }, [source]);
+
   const current = results[active];
   const spec = modules.find((m) => m.id === active);
 
@@ -268,6 +288,12 @@ export function Dashboard() {
                 <option value="__new">Nouveau portefeuille…</option>
               </select>
             )}
+            {user && source.kind === "portfolio" && source.data.transactions.length > 0 && (
+              <button onClick={() => setAlertsOpen(true)}
+                      className="rounded-lg border border-line px-3.5 py-2 text-sm text-muted transition-colors hover:border-faint hover:text-text">
+                Alertes
+              </button>
+            )}
             {source.kind !== "demo" && source.data.transactions.length > 0 && (
               <button onClick={() => setOpsOpen(true)}
                       className="rounded-lg border border-line px-3.5 py-2 text-sm text-muted transition-colors hover:border-faint hover:text-text">
@@ -315,6 +341,10 @@ export function Dashboard() {
                            transactions={source.data.transactions}
                            imports={source.kind === "portfolio" ? source.data.imports : null}
                            onDeleteTransactions={onDeleteTransactions} onDeleteImport={onDeleteImport} />
+        )}
+        {user && source.kind === "portfolio" && (
+          <AlertsPanel open={alertsOpen} onClose={() => setAlertsOpen(false)} supabase={supabase}
+                       portfolio={source.portfolio} lines={heldLines} email={user.email ?? null} />
         )}
         <PortfolioDialog open={newPortfolioOpen} first={portfolios.length === 0} onClose={() => setNewPortfolioOpen(false)} onCreate={onCreatePortfolio} />
 

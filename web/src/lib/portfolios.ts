@@ -125,9 +125,18 @@ export async function saveImport(
     currency: i.currency, country: i.country, sector: i.sector, updated_at: new Date().toISOString(),
   }));
   if (instruments.length) {
-    // Les métadonnées déjà renseignées ne sont pas écrasées par un import qui n'en contient pas
-    const { error } = await sb.from("portfolio_instruments").upsert(instruments, { onConflict: "portfolio_id,symbol", ignoreDuplicates: true });
-    if (error) throw new Error("Les informations des titres n'ont pas pu être enregistrées.");
+    // Le dernier import fait foi pour le nom, la classe d'actif et la devise (un import refait avec un lecteur
+    // corrigé répare les fiches) ; pays et secteur déjà renseignés ne sont écrasés que si l'import en fournit.
+    const withGeo = instruments.filter((i) => i.country || i.sector);
+    const withoutGeo = instruments.filter((i) => !i.country && !i.sector).map((i) => ({
+      portfolio_id: i.portfolio_id, user_id: i.user_id, symbol: i.symbol, name: i.name, asset_class: i.asset_class,
+      currency: i.currency, updated_at: i.updated_at,
+    }));
+    for (const rows of [withGeo, withoutGeo]) {
+      if (!rows.length) continue;
+      const { error } = await sb.from("portfolio_instruments").upsert(rows, { onConflict: "portfolio_id,symbol" });
+      if (error) throw new Error("Les informations des titres n'ont pas pu être enregistrées.");
+    }
   }
   return { inserted: fresh.length, duplicates: result.transactions.length - fresh.length };
 }
