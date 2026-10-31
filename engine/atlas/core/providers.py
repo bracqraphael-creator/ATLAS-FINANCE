@@ -349,14 +349,81 @@ class YahooProvider:
                 best = (rank, ticker)
         return best[1] if best else None
 
+    # -- repli par le nom, contrôlé par les prix réellement payés ------------------------
+    def _fx_on(self, cur: str, base: str, on: date, start: date | None) -> float | None:
+        if cur in (base, ""):
+            return 1.0
+        cur = "GBP" if cur in ("GBp", "GBX") else cur
+        series, _ = self.daily(f"{cur}{base}=X", start)
+        past = series[series.index <= pd.Timestamp(on)]
+        return float(past.iloc[-1]) if not past.empty else None
+
+    def _matches_trades(self, ticker: str, trades: list[tuple[date, float, str]], base: str,
+                        start: date | None) -> bool:
+        """Le cours du candidat, le jour des opérations, est-il à ±20 % des prix payés ?"""
+        series, cur = self.daily(ticker, start)
+        if series.empty:
+            return False
+        checked = 0
+        for on, price, tx_cur in trades[:3]:
+            past = series[series.index <= pd.Timestamp(on)]
+            if past.empty or price <= 0:
+                continue
+            close = float(past.iloc[-1]) / (100.0 if cur in ("GBp", "GBX") else 1.0)
+            to_base = self._fx_on(cur, base, on, start)
+            tx_to_base = self._fx_on(tx_cur, base, on, start)
+            if not to_base or not tx_to_base:
+                continue
+            ratio = close * to_base / (price * tx_to_base)
+            if not 0.8 <= ratio <= 1.25:
+                return False
+            checked += 1
+        return checked > 0
+
+    def resolve_by_name(self, symbol: str, name: str, trades: list[tuple[date, float, str]],
+                        base_currency: str, start: date | None) -> str | None:
+        key = (symbol, "name")
+        now = time.time()
+        with self._lock:
+            hit = self._resolved.get(key)
+        if hit and (hit[1] is not None or now - hit[0] < 24 * 3600):
+            return hit[1]
+        # « SIEMENS AG NA », « CREDIT AGRICOLE INH. EO 3 » : mentions de forme et de nominal retirées
+        query = re.sub(r"\b(INH|NA|O\.N|EO|DL|LS|SF|ADR|REG|CL|ACC|DIST)\b\.?|[-,]*\d[\d,./-]*", " ", name, flags=re.I)
+        query = re.sub(r"\s+", " ", query).strip()
+        found = None
+        if len(query) >= 3 and trades:
+            r = self.client.get(self.SEARCH_URL, params={"q": query, "quotesCount": "8", "newsCount": "0",
+                                                        "listsCount": "0"})
+            r.raise_for_status()
+            for q in (r.json().get("quotes") or [])[:6]:
+                ticker = q.get("symbol")
+                if not ticker or q.get("quoteType") not in YAHOO_TYPES:
+                    continue
+                try:
+                    if self._matches_trades(ticker, trades, base_currency, start):
+                        found = ticker
+                        break
+                except (httpx.HTTPError, ValueError, KeyError):
+                    continue
+        with self._lock:
+            self._resolved[key] = (now, found)
+        return found
+
     # -- chargement ----------------------------------------------------------------------
     def load(self, symbols: Iterable[str], currencies: dict[str, str], base_currency: str = "EUR",
-             start: date | None = None) -> MarketData:
+             start: date | None = None,
+             hints: dict[str, tuple[str, list[tuple[date, float, str]]]] | None = None) -> MarketData:
+        """`hints` : symbole -> (nom du titre, opérations (date, prix, devise)) pour le repli par le nom."""
         symbols = list(symbols)
+        hints = hints or {}
 
         def fetch(sym: str):
             try:
                 ticker = self.resolve(sym, currencies.get(sym, base_currency), base_currency)
+                if ticker is None and sym in hints and not sym.endswith("-TR"):
+                    name, trades = hints[sym]
+                    ticker = self.resolve_by_name(sym, name, trades, base_currency, start)
                 if ticker is None:
                     return sym, None, None, None
                 series, cur = self.daily(ticker, start)

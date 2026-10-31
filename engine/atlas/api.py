@@ -55,7 +55,14 @@ def load_market(portfolio: Portfolio, demo: bool = False) -> MarketData:
         if not key:
             return MarketData(base_currency=portfolio.base_currency, source="clé EODHD manquante")
         return EodhdProvider(key).load(symbols, tx_currency, portfolio.base_currency, start)
-    return YahooProvider().load(symbols, tx_currency, portfolio.base_currency, start)
+    # Indices pour le repli par le nom : nom du titre et ses achats (prix payés), contrôle de vraisemblance
+    hints: dict[str, tuple[str, list]] = {}
+    for t in portfolio.transactions:
+        if t.symbol and t.type.value == "buy" and t.price > 0:
+            name = portfolio.instrument(t.symbol).name or t.name or ""
+            if name and name != t.symbol:
+                hints.setdefault(t.symbol, (name, []))[1].append((t.date, t.price, t.currency))
+    return YahooProvider().load(symbols, tx_currency, portfolio.base_currency, start, hints)
 
 
 def demo_portfolio() -> Portfolio:
@@ -82,15 +89,21 @@ MARKET_CHECK = {"US0378331005": "EUR", "IE000BI8OT95": "EUR", "FR0000121014": "E
 
 
 @app.get("/market/check")
-def market_check(symbols: str | None = None) -> dict[str, Any]:
+def market_check(symbols: str | None = None, name: str | None = None, on: str | None = None,
+                 price: float | None = None) -> dict[str, Any]:
     """Diagnostic : le fournisseur de cours configuré résout-il ces titres (ISIN séparés par des virgules,
-    40 au plus ; à défaut, quelques titres publics de référence) ?"""
+    40 au plus ; à défaut, quelques titres publics de référence) ? `name`, `on` et `price` décrivent un achat
+    du premier titre, pour éprouver le repli par le nom."""
     wanted = {s.strip().upper(): "EUR" for s in (symbols or "").split(",") if s.strip()}
     if len(wanted) > 40:
         raise HTTPException(422, "40 titres au plus")
     check = wanted or MARKET_CHECK
-    pf = Portfolio(transactions=[Transaction(date="2026-01-02", type="buy", symbol=s, quantity=1, price=1, currency=c)
-                                 for s, c in check.items()])
+    first = next(iter(check))
+    pf = Portfolio(
+        transactions=[Transaction(date=on if (s == first and on) else "2026-01-02", type="buy", symbol=s, quantity=1,
+                                  price=price if (s == first and price) else 1, currency=c) for s, c in check.items()],
+        instruments={first: Instrument(symbol=first, name=name)} if name else {},
+    )
     md = load_market(pf)
     return {
         "provider": _provider_name(),

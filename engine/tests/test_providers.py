@@ -128,12 +128,15 @@ YAHOO_SEARCH = {
                      {"symbol": "APC.F", "exchange": "FRA", "quoteType": "EQUITY"}],
     "IE000BI8OT95": [{"symbol": "MWRD.PA", "exchange": "PAR", "quoteType": "ETF"}],
     "GB0004300496": [{"symbol": "PAF.L", "exchange": "LSE", "quoteType": "EQUITY"}],
+    "WisdomTree Physical Swiss Gold": [{"symbol": "LEURRE.PA", "exchange": "PAR", "quoteType": "ETF"},
+                                       {"symbol": "SGBS.L", "exchange": "LSE", "quoteType": "ETF"}],
     "CW8": [{"symbol": "CW8.PA", "exchange": "PAR", "quoteType": "ETF"},
             {"symbol": "CW8X.DE", "exchange": "GER", "quoteType": "ETF"}],
 }
 YAHOO_CHART = {   # ticker : (devise, clôtures) ; deux séances : 02/01/2024 et 03/01/2024
     "APC.DE": ("EUR", [170.0, 172.0]), "AAPL": ("USD", [185.0, 186.0]), "MWRD.PA": ("EUR", [100.0, None]),
     "PAF.L": ("GBp", [21.0, 22.0]), "BTC-EUR": ("EUR", [40000.0, 41000.0]), "CW8.PA": ("EUR", [450.0, 455.0]),
+    "LEURRE.PA": ("EUR", [10.0, 10.0]), "SGBS.L": ("USD", [200.0, 202.0]),
     "USDEUR=X": ("EUR", [0.91, 0.92]), "GBPEUR=X": ("EUR", [1.15, 1.16]),
 }
 
@@ -188,3 +191,22 @@ def test_yahoo_titre_en_dollars(yahoo):
     assert md.listings["US0378331005"] == "AAPL"
     assert md.last_price_base("US0378331005") == pytest.approx(186.0 * 0.92)
     assert md.source.startswith("Yahoo")
+
+
+def test_yahoo_repli_par_le_nom_controle_par_le_prix_paye(yahoo):
+    from datetime import date
+    provider, _ = yahoo
+    # ISIN inconnu de la recherche ; achat le 03/01/2024 à 185,84 € = 202 $ × 0,92 : seul SGBS.L est vraisemblable,
+    # le leurre (10 €) est écarté par le contrôle à ±20 %
+    hints = {"JE00B588CD74": ("WisdomTree Physical Swiss Gold", [(date(2024, 1, 3), 185.84, "EUR")])}
+    md = provider.load(["JE00B588CD74"], {"JE00B588CD74": "EUR"}, hints=hints)
+    assert md.listings["JE00B588CD74"] == "SGBS.L"
+    assert md.last_price_base("JE00B588CD74") == pytest.approx(202 * 0.92)
+
+
+def test_yahoo_repli_refuse_si_aucun_prix_ne_correspond(yahoo):
+    from datetime import date
+    provider, _ = yahoo
+    hints = {"JE00B588CD74": ("WisdomTree Physical Swiss Gold", [(date(2024, 1, 3), 50.0, "EUR")])}
+    md = provider.load(["JE00B588CD74"], {"JE00B588CD74": "EUR"}, hints=hints)
+    assert not md.has("JE00B588CD74")      # mieux vaut le prix de revient qu'un cours faux
