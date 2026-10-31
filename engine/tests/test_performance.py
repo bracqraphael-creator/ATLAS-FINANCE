@@ -72,7 +72,8 @@ def test_comparaison_a_l_indice_meme_argent_memes_dates():
     assert equivalent_value(daily_book(PF, md), md.benchmark[1]).iloc[-1] == pytest.approx(2310.0)
     b = blocks(run("performance", PF, md))
     assert b["bench"].value == pytest.approx(10.0)            # 50 -> 55
-    assert "2 310,00 €" in b["pme"].text.replace(" ", " ")
+    assert b["pme"].value == pytest.approx(2310.0)
+    assert "310,00 €" in b["pme-detail"].text
     year = b["years"].rows[0]
     assert (year["portfolio"], year["benchmark"], year["gap"]) == pytest.approx((-1.0, 10.0, -11.0))
 
