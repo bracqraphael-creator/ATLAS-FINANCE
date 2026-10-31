@@ -83,7 +83,7 @@ class _Account:
 def read_trade_republic(pages: list[Any]) -> Sheet:
     rows: list[list[str]] = []
     accounts: list[_Account] = []
-    no_qty: list[str] = []
+    descs: list[str] = []
     account: _Account | None = None
 
     for page in pages:
@@ -129,12 +129,11 @@ def read_trade_republic(pages: list[Any]) -> Sheet:
             lo = day["top"] - 3
             hi = days[k + 1]["top"] - 3 if k + 1 < len(days) else end
             block = [w for w in body if lo <= w["top"] < hi]
-            row = _parse_block(block, type_x, desc_x, split_x, account)
-            if row is None:
+            parsed = _parse_block(block, type_x, desc_x, split_x, account)
+            if parsed is None:
                 continue
-            if row[4] == "" and row[1] in ("buy", "sell"):
-                no_qty.append(f"{row[0]} {row[3]}")
-            rows.append(row)
+            rows.append(parsed[0])
+            descs.append(parsed[1])
 
     # Noms manquants (achats directs de crypto, dividendes « for ISIN … ») : repris des autres lignes du même titre
     names = {r[2]: r[3] for r in rows if r[2] and r[3]}
@@ -144,6 +143,11 @@ def read_trade_republic(pages: list[Any]) -> Sheet:
             r[3] = names.get(r[2]) or (CRYPTO_NAMES.get(ticker.group(1), ticker.group(1)) if ticker else r[2])
         if r[2] and r[1] in ("dividend",) and r[3] == r[2]:
             r[3] = f"Revenu {r[2]}"
+
+    fee_count = _order_fees(rows, descs)
+    synthetic = _amount_only_trades(rows, descs)
+    _classify(rows, descs)
+    no_qty = [f"{r[0]} {r[3]}" for r in rows if r[4] == "" and r[1] in ("buy", "sell")]
 
     notes = [f"Relevé de compte Trade Republic : {sum(a.count for a in accounts)} opérations lues."]
     for a in accounts:
@@ -158,20 +162,117 @@ def read_trade_republic(pages: list[Any]) -> Sheet:
     if len([a for a in accounts if a.count]) > 1:
         notes.append("Plusieurs comptes sont réunis dans ce portefeuille ; les virements entre eux s'annulent "
                      "(colonne « Compte » dans l'aperçu).")
+    notes.append("Le relevé ne donne pas le cours d'exécution : prix unitaire = (montant ∓ frais) / quantité.")
+    if fee_count:
+        notes.append(f"{fee_count} ordre(s) ponctuel(s) : frais de 1 € par ordre (tarif Trade Republic) séparés du "
+                     "prix. Les plans d'épargne et la partie fractionnaire d'un ordre partagé sont sans frais.")
+    if synthetic:
+        notes.append(f"{synthetic} opération(s) sans quantité dans le relevé (achats directs de crypto, Private "
+                     "Markets) importées en montants : 1 part = 1 € investi, valorisée au prix d'achat. Une vente "
+                     "sans quantité solde la ligne ; la plus ou moins-value réalisée est donc exacte.")
     if no_qty:
-        notes.append(f"{len(no_qty)} achat(s)/vente(s) sans quantité dans le relevé (achats directs de crypto, "
-                     "Private Markets…) ne peuvent pas être importés depuis ce PDF. Pour ces titres, utilisez "
-                     "l'export CSV de l'application ou ajoutez-les à la main.")
-    notes.append("Le relevé ne donne pas le cours d'exécution : prix unitaire = montant / quantité "
-                 "(frais d'ordre de 1 € inclus).")
+        notes.append(f"{len(no_qty)} achat(s)/vente(s) sans quantité n'ont pas pu être rapprochés et ne sont pas "
+                     "importés. Ajoutez-les à la main ou utilisez l'export CSV de l'application.")
     return Sheet(headers=HEADERS, rows=rows, source="pdf-traderepublic", notes=notes)
+
+
+ORDER_FEE = 1.0
+
+
+def _is_integer(q: float) -> bool:
+    return abs(q - round(q)) < 1e-9
+
+
+def _order_fees(rows: list[list[str]], descs: list[str]) -> int:
+    """Sépare les frais de 1 € des ordres ponctuels (« Buy trade » / « Sell trade ») et calcule le cours.
+
+    Trade Republic facture 1 € par ordre ; les plans d'épargne sont gratuits. Un ordre portant sur des titres
+    entiers et une fraction est éclaté en deux lignes le même jour (« quantity: 5 » puis « quantity: 0.617977 ») :
+    les frais ne figurent que sur la ligne des titres entiers. Vérifié sur un vrai relevé : 5,45 € pour 5 titres et
+    0,55 € pour 0,617977 donnent le même cours, 0,89 €, une fois 1 € retiré de la première ligne."""
+    count = 0
+    for i, (r, desc) in enumerate(zip(rows, descs)):
+        if r[1] not in ("buy", "sell"):
+            continue
+        amount = float(r[8])
+        if not r[4]:
+            continue
+        qty = float(r[4])
+        fee = 0.0
+        if re.search(r"\b(buy|sell)\s+trade\b", desc, re.IGNORECASE):
+            whole_sibling = any(o is not r and o[0] == r[0] and o[1] == r[1] and o[2] == r[2] and o[4]
+                                and _is_integer(float(o[4])) for o in rows)
+            if _is_integer(qty) or not whole_sibling:
+                fee = ORDER_FEE
+        if r[1] == "buy" and amount - fee <= 0:
+            fee = 0.0
+        gross = amount - fee if r[1] == "buy" else amount + fee
+        r[5] = repr(gross / qty)
+        r[7] = f"{fee:g}" if fee else ""
+        count += fee > 0
+    return count
+
+
+def _amount_only_trades(rows: list[list[str]], descs: list[str]) -> int:
+    """Achats directs de crypto et Private Markets : le relevé ne donne que le montant. Ils sont importés en
+    « parts d'un euro » sur une ligne distincte (jamais mêlée aux achats de la même crypto avec quantité, ni
+    rattachée à un cours de marché) : achat de 41,44 € = 41,44 parts à 1 €. Une vente sans quantité solde toutes
+    les parts ouvertes à son montant, ce qui donne la plus ou moins-value réalisée exacte. Une vente qui ne suit
+    aucun achat sans quantité reste non importée."""
+    held: dict[tuple[str, str], float] = {}
+    count = 0
+    for r, desc in zip(rows, descs):
+        if r[1] not in ("buy", "sell") or r[4]:
+            continue
+        amount = float(r[8])
+        if r[2].startswith("XF000"):
+            ticker = re.match(r"XF000([A-Z]+)", r[2]).group(1)
+            symbol, label = f"{ticker}-EUR-TR", f"{r[3]} (achat direct, montants en €)"
+        elif re.search(r"private\s+markets", f"{r[3]} {desc}", re.IGNORECASE):
+            symbol, label = "PRIVATE-MARKETS-TR", "Private Markets (montants en €)"
+        else:
+            continue
+        key = (r[10], symbol)
+        if r[1] == "buy":
+            held[key] = held.get(key, 0.0) + amount
+            qty = amount
+        else:
+            qty = held.pop(key, 0.0)
+            if qty <= 0:
+                continue
+        r[2], r[3], r[4], r[5] = symbol, label, repr(qty), repr(amount / qty)
+        count += 1
+    return count
+
+
+def _classify(rows: list[list[str]], descs: list[str]) -> None:
+    """Classe d'actif : utile au module d'exposition (actions, ETF, obligations, crypto, matières premières).
+    Une ligne qui verse des intérêts (« Interest Payment for ISIN … ») est une obligation."""
+    bonds = {r[2] for r, d in zip(rows, descs) if r[1] == "dividend" and r[2] and re.search(r"interest", d, re.I)}
+    for r in rows:
+        if not r[2]:
+            continue
+        name = r[3]
+        if r[2] in bonds or re.search(r"\b\d{2}/\d{2}\b", name):
+            r[9] = "bond"
+        elif r[2].startswith("XF000") or r[2].endswith("-EUR-TR"):
+            r[9] = "crypto"
+        elif r[2] == "PRIVATE-MARKETS-TR":
+            r[9] = "fund"
+        elif re.search(r"\b(physical|gold|xau|silver|etc)\b", name, re.IGNORECASE):
+            r[9] = "commodity"
+        elif re.search(r"\b(ETF|UCITS)\b", name):
+            r[9] = "etf"
+        elif ISIN_RE.fullmatch(r[2]):
+            r[9] = "equity"
 
 
 def _fr(v: float) -> str:
     return f"{v:,.2f}".replace(",", " ").replace(".", ",")
 
 
-def _parse_block(block: list[dict], type_x: float, desc_x: float, split_x: float, acc: _Account) -> list[str] | None:
+def _parse_block(block: list[dict], type_x: float, desc_x: float, split_x: float,
+                 acc: _Account) -> tuple[list[str], str] | None:
     amounts = [w for w in block if w["x0"] > split_x - 40 and AMOUNT_RE.match(w["text"])]
     if len(amounts) < 2:
         return None
@@ -226,11 +327,26 @@ def _parse_block(block: list[dict], type_x: float, desc_x: float, split_x: float
         name = desc
     else:
         ttype = "deposit" if inflow else "withdrawal"
-        isin, name = "", desc
+        isin, name = "", _cash_label(desc, inflow)
 
-    cls = "crypto" if isin.startswith("XF000") else "etf" if re.search(r"\b(ETF|UCITS)\b", name) else ""
     return [d.isoformat() if d else "", ttype, isin, name, f"{qty:.10g}" if qty else "", "", "EUR", "",
-            f"{value:.2f}", cls, acc.name]
+            f"{value:.2f}", "", acc.name], full
+
+
+def _cash_label(desc: str, inflow: bool) -> str:
+    """Libellés lisibles pour les mouvements d'espèces (le relevé mêle anglais, français et IBAN complets)."""
+    d = desc.lower()
+    if "versement pea" in d:
+        return "Versement PEA"
+    if "activation" in d:
+        return "Activation PEA"
+    if "apple pay" in d or "google pay" in d or "top up" in d:
+        return "Dépôt par carte"
+    if "payout" in d:
+        return "Retrait"
+    if any(k in d for k in ("transfer", "paiement accepté", "virement", "sepa")):
+        return "Virement reçu" if inflow else "Virement émis"
+    return desc
 
 
 def _date(words: list[dict]) -> date | None:

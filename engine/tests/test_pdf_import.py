@@ -137,27 +137,33 @@ def _tr_statement() -> bytes:
     at(74, 204, "SYNTHÈSE DU RELEVÉ DE COMPTE")
     for x, t in [(74, "PRODUIT"), (161, "SOLDE DÉBUT"), (271, "ENTRÉE"), (349, "SORTIE"), (462, "SOLDE FIN")]:
         at(x, 242, t)
-    for x, t in [(74, "Compte courant"), (161, "0,00 €"), (271, "60,00 €"), (349, "54,45 €"), (496, "5,55 €")]:
+    for x, t in [(74, "Compte courant"), (161, "0,00 €"), (271, "76,00 €"), (349, "59,90 €"), (496, "16,10 €")]:
         at(x, 257, t)
     at(74, 314, "TRANSACTIONS")
     at(74, 346, "DATE"); at(102, 346, "TYPE"); at(141, 346, "DESCRIPTION"); at(502, 346, "SOLDE")
     vertical(428, 343, "ENTREE"); vertical(459, 343, "SORTIE")
-    rows = [
-        # (top, date ligne 1, année, type, type ligne 2, description, montant, colonne, solde)
-        (364, "03 oct.", "2024", "Virement", "", "Paiement accepté: FR76 à DE16", "50,00", 428, "50,00"),
-        (396, "09 oct.", "2024", "Exécution", "d'ordre", "Buy trade CA38149E1016 GOLDMINING INC., quantity: 0.617977",
+    lines = [
+        # (date ligne 1, année, type, type ligne 2, description, montant, colonne, solde)
+        ("03 oct.", "2024", "Virement", "", "Paiement accepté: FR76 à DE16", "50,00", 428, "50,00"),
+        # Ordre de 5,617977 titres éclaté en deux lignes : 1 € de frais sur la ligne des titres entiers seulement
+        ("09 oct.", "2024", "Exécution", "d'ordre", "Buy trade CA38149E1016 GOLDMINING INC., quantity: 0.617977",
          "0,55", 459, "49,45"),
-        (427, "16 oct.", "2024", "Exécution", "d'ordre", "Savings plan execution US0378331005 APPLE INC., quantity: 0.047136",
-         "10,00", 459, "39,45"),
-        (459, "22 oct.", "2024", "Exécution", "d'ordre", "Sell trade CA38149E1016 GOLDMINING INC., quantity: 0.617977",
-         "0,60", 428, "40,05"),
-        (491, "10 nov.", "2024", "Exécution", "d'ordre", "Exécution Achat direct XF000BTC0017 C1012656058",
-         "14,97", 459, "25,08"),
+        ("09 oct.", "2024", "Exécution", "d'ordre", "Buy trade CA38149E1016 GOLDMINING INC., quantity: 5",
+         "5,45", 459, "44,00"),
+        ("16 oct.", "2024", "Exécution", "d'ordre", "Savings plan execution US0378331005 APPLE INC., quantity: 0.047136",
+         "10,00", 459, "34,00"),
+        ("22 oct.", "2024", "Exécution", "d'ordre", "Sell trade CA38149E1016 GOLDMINING INC., quantity: 0.617977",
+         "0,60", 428, "34,60"),
+        ("10 nov.", "2024", "Exécution", "d'ordre", "Exécution Achat direct XF000BTC0017 C1012656058",
+         "14,97", 459, "19,63"),
         # Comme sur le vrai relevé, « Rendement » est collé au début de la description : « RendementCash Dividend »
-        (523, "14 nov.", "2024", "", "", "RendementCash Dividend for ISIN US0378331005", "0,01", 428, "25,09"),
-        (555, "20 nov.", "2024", "Virement", "", "Outgoing transfer for Raphaël", "28,93", 459, "-3,84"),
-        (587, "02 déc.", "2024", "Virement", "", "Apple Pay Top up", "9,39", 428, "5,55"),
+        ("14 nov.", "2024", "", "", "RendementCash Dividend for ISIN US0378331005", "0,01", 428, "19,64"),
+        ("15 nov.", "2024", "Exécution", "d'ordre", "Exécution Vente directe XF000BTC0017 C1012656999",
+         "16,00", 428, "35,64"),
+        ("20 nov.", "2024", "Virement", "", "Outgoing transfer for Raphaël", "28,93", 459, "6,71"),
+        ("02 déc.", "2024", "Virement", "", "Apple Pay Top up", "9,39", 428, "16,10"),
     ]
+    rows = [(364 + 32 * k, *line) for k, line in enumerate(lines)]
     for top, d1, year, t1, t2, desc, amount, col, bal in rows:
         at(74, top, d1); at(74, top + 8, year)
         if t1:
@@ -176,24 +182,37 @@ def _tr_statement() -> bytes:
 def test_pdf_releve_trade_republic():
     pdf = _tr_statement()
     a = analyze_file(pdf)
-    assert a.format == "pdf-traderepublic" and a.row_count == 8
+    assert a.format == "pdf-traderepublic" and a.row_count == 10
     r = parse_file(pdf)
-    by_type = [(t.date.isoformat(), t.type.value, t.symbol) for t in r.transactions]
+    assert not r.rejected, r.rejected
+    by_type = [(t.date.isoformat(), t.type.value, t.symbol, t.name) for t in r.transactions]
     assert by_type == [
-        ("2024-10-03", "deposit", None),
-        ("2024-10-09", "buy", "CA38149E1016"),          # sortie d'argent -> achat
-        ("2024-10-16", "buy", "US0378331005"),          # plan d'épargne -> achat
-        ("2024-10-22", "sell", "CA38149E1016"),         # entrée d'argent -> vente
-        ("2024-11-14", "dividend", "US0378331005"),
-        ("2024-11-20", "withdrawal", None),
-        ("2024-12-02", "deposit", None),
+        ("2024-10-03", "deposit", None, "Virement reçu"),
+        ("2024-10-09", "buy", "CA38149E1016", "GOLDMINING INC."),     # sortie d'argent -> achat
+        ("2024-10-09", "buy", "CA38149E1016", "GOLDMINING INC."),
+        ("2024-10-16", "buy", "US0378331005", "APPLE INC."),          # plan d'épargne -> achat
+        ("2024-10-22", "sell", "CA38149E1016", "GOLDMINING INC."),    # entrée d'argent -> vente
+        ("2024-11-10", "buy", "BTC-EUR-TR", "Bitcoin (achat direct, montants en €)"),
+        ("2024-11-14", "dividend", "US0378331005", "APPLE INC."),
+        ("2024-11-15", "sell", "BTC-EUR-TR", "Bitcoin (achat direct, montants en €)"),
+        ("2024-11-20", "withdrawal", None, "Virement émis"),
+        ("2024-12-02", "deposit", None, "Dépôt par carte"),
     ]
-    buy = r.transactions[1]
-    # Quantité au format anglais : 0.617977 (et non 0,617 + 977) ; prix = 0,55 / 0.617977 = 0,88999…
-    assert buy.quantity == 0.617977 and abs(buy.price - 0.55 / 0.617977) < 1e-9
-    assert buy.name == "GOLDMINING INC."
-    assert r.transactions[4].amount == 0.01 and r.transactions[4].name == "APPLE INC."
-    # Achat direct de crypto sans quantité : refusé avec une raison explicite
-    assert len(r.rejected) == 1 and "Bitcoin" in r.rejected[0].reason and "quantité non indiquée" in r.rejected[0].reason
-    # Solde recalculé : 50 - 0,55 - 10 + 0,60 - 14,97 + 0,01 - 28,93 + 9,39 = 5,55 € = solde de fin du relevé
-    assert any("5,55 € = solde du relevé" in n for n in r.notes)
+    frac, whole, plan, sell, btc_buy, div, btc_sell = (r.transactions[i] for i in (1, 2, 3, 4, 5, 6, 7))
+    # Quantité au format anglais : 0.617977 (et non 0,617 + 977). Partie fractionnaire d'un ordre partagé : sans
+    # frais, cours = 0,55 / 0.617977 = 0,8900. Titres entiers : 1 € de frais, cours = (5,45 - 1) / 5 = 0,89.
+    assert frac.quantity == 0.617977 and frac.fees == 0 and abs(frac.price - 0.55 / 0.617977) < 1e-9
+    assert (whole.quantity, whole.fees, whole.price) == (5, 1, 0.89)
+    # Plan d'épargne : gratuit, cours = 10 / 0.047136
+    assert plan.fees == 0 and abs(plan.price - 10 / 0.047136) < 1e-9
+    # Vente isolée : 1 € de frais, montant net 0,60 -> cours brut = (0,60 + 1) / 0.617977
+    assert sell.fees == 1 and abs(sell.price - 1.60 / 0.617977) < 1e-9
+    # Crypto sans quantité : parts d'un euro ; la vente solde les 14,97 parts à 16 € -> +1,03 € réalisé
+    assert (btc_buy.quantity, btc_buy.price) == (14.97, 1)
+    assert btc_sell.quantity == 14.97 and abs(btc_sell.quantity * btc_sell.price - 16.0) < 1e-9
+    assert r.instruments["BTC-EUR-TR"].asset_class.value == "crypto"
+    assert r.instruments["CA38149E1016"].asset_class.value == "equity"
+    assert div.amount == 0.01
+    # Solde recalculé : 50 - 0,55 - 5,45 - 10 + 0,60 - 14,97 + 0,01 + 16 - 28,93 + 9,39 = 16,10 € = solde du relevé
+    assert any("16,10 € = solde du relevé" in n for n in r.notes)
+    assert any("frais de 1 €" in n for n in r.notes)
