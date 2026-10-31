@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import __version__
+from .core.alerts import AlertRule, evaluate
 from .core.importers import Analysis, ImportResult, analyze_file, parse_file
 from .core.market import MarketData
 from .core.models import Instrument, Portfolio, Transaction
@@ -193,6 +194,20 @@ async def import_file(file: UploadFile = File(...), mapping: str | None = Form(N
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(400, f"Fichier illisible : {exc}") from exc
+
+
+class AlertsRequest(ComputeRequest):
+    rules: list[AlertRule]
+
+
+@app.post("/alerts/evaluate")
+def alerts_evaluate(req: AlertsRequest) -> dict[str, Any]:
+    """Règles d'alerte d'un portefeuille évaluées sur les dernières clôtures (franchissements de seuil)."""
+    portfolio = Portfolio(transactions=req.transactions, instruments=req.instruments, base_currency=req.base_currency)
+    market = load_market(portfolio)
+    events = evaluate(portfolio, market, req.rules)
+    return {"as_of": market.as_of.isoformat() if market.as_of else None, "source": market.source,
+            "events": [e.model_dump(mode="json") for e in events]}
 
 
 def _run(module_id: str, portfolio: Portfolio, params: dict[str, Any], demo: bool = False) -> ModuleResult:

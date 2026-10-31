@@ -107,6 +107,30 @@ do $$ begin
   assert (select count(*) from public.imports) = 0, 'import non supprimé';
 end $$;
 
+-- Alertes : sur son portefeuille oui, sur celui de Bob non ; déclenchements et jeton réservés au serveur
+insert into public.alerts (user_id, portfolio_id, condition)
+values ('00000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000a', '{"kind": "rsi", "threshold": 70}');
+do $$ begin
+  begin
+    insert into public.alerts (user_id, portfolio_id, condition)
+    values ('00000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000b', '{"kind": "rsi"}');
+    raise exception 'ECHEC : alerte rattachée au portefeuille de Bob';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.alert_events (user_id, alert_id, event_key, triggered_on, message)
+    select user_id, id, 'x', current_date, 'faux' from public.alerts limit 1;
+    raise exception 'ECHEC : déclenchement écrit par un utilisateur';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.check_alerts_cron_token('x');
+    raise exception 'ECHEC : jeton vérifiable par un utilisateur';
+  exception when insufficient_privilege then null;
+  end;
+  assert (select count(*) from public.alerts) = 1, 'alerte non enregistrée';
+end $$;
+
 reset role;
 do $$ begin
   assert (select count(*) from public.imports) = 1, 'l''import de Bob a été supprimé';
