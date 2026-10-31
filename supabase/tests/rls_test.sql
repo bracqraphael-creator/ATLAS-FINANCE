@@ -65,6 +65,29 @@ do $$ begin
   end;
 end $$;
 
+-- Alice ne peut pas rattacher une transaction à SON compte mais au portefeuille de Bob
+do $$ begin
+  begin
+    insert into public.transactions (user_id, portfolio_id, trade_date, type, quantity, price)
+    values ('00000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000b', '2024-03-01', 'buy', 1, 1);
+    raise exception 'ECHEC : transaction rattachée au portefeuille de Bob';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+
+-- Métadonnées de titres : Alice écrit dans son portefeuille, pas dans celui de Bob
+insert into public.portfolio_instruments (portfolio_id, user_id, symbol, asset_class)
+values ('10000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000a', 'CW8', 'etf');
+do $$ begin
+  begin
+    insert into public.portfolio_instruments (portfolio_id, user_id, symbol)
+    values ('10000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000a', 'X');
+    raise exception 'ECHEC : métadonnée écrite dans le portefeuille de Bob';
+  exception when insufficient_privilege then null;
+  end;
+  assert (select count(*) from public.portfolio_instruments) = 1, 'métadonnées mal isolées';
+end $$;
+
 reset role;
 do $$ begin
   assert (select price from public.transactions where symbol = 'AAPL') = 180, 'la transaction de Bob a été modifiée';

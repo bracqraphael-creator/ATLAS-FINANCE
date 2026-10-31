@@ -10,7 +10,7 @@ const TYPE_LABELS: Record<Transaction["type"], string> = {
 const REQUIRED = new Set(["date"]);
 const STORAGE_PREFIX = "atlas-mapping:";
 
-type Props = { open: boolean; onClose: () => void; onImported: (result: ImportResult, fileName: string) => void };
+type Props = { open: boolean; onClose: () => void; onImported: (result: ImportResult, fileName: string) => void; target?: string | null };
 
 async function post<T>(path: string, form: FormData): Promise<T> {
   const res = await fetch(`/api/engine/${path}`, { method: "POST", body: form });
@@ -28,7 +28,7 @@ function saveMapping(headers: string[], mapping: Record<string, number>) {
   try { localStorage.setItem(signature(headers), JSON.stringify(mapping)); } catch { /* stockage indisponible */ }
 }
 
-export function ImportWizard({ open, onClose, onImported }: Props) {
+export function ImportWizard({ open, onClose, onImported, target }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<ImportAnalysis | null>(null);
   const [mapping, setMapping] = useState<Record<string, number>>({});
@@ -106,7 +106,7 @@ export function ImportWizard({ open, onClose, onImported }: Props) {
       <div className="flex max-h-[calc(100vh-24px)] flex-col">
         <header className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
           <div>
-            <h2 id="import-title" className="text-base font-semibold">Importer des opérations</h2>
+            <h2 id="import-title" className="text-base font-semibold">{target ? `Importer dans ${target}` : "Importer des opérations"}</h2>
             <p className="mt-0.5 text-[13px] text-muted">
               {analysis ? `${file?.name}, ${analysis.row_count} ligne(s) lue(s)` : "Export CSV ou Excel de votre courtier, de votre banque ou d'un autre logiciel"}
             </p>
