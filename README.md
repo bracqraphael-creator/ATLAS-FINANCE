@@ -37,11 +37,14 @@ Créer un projet Supabase (région Europe), puis appliquer `supabase/migrations/
 (éditeur SQL de Supabase ou `supabase db push`).
 
 ## Import des opérations
-L'assistant d'import (bouton « Importer des opérations ») accepte les fichiers **CSV et Excel** :
+L'assistant d'import (bouton « Importer des opérations ») accepte les fichiers **CSV, Excel et PDF** :
 - **DEGIRO** (export « Transactions », FR/EN) est reconnu automatiquement ;
 - les autres exports (courtiers, banques, logiciels) sont analysés : colonnes reconnues en français, anglais,
   allemand et néerlandais, type d'opération lu dans une colonne dédiée, dans le libellé (« ACHAT COMPTANT… »)
   ou déduit du signe de la quantité ; l'utilisateur vérifie et corrige la correspondance avant d'importer ;
+- **PDF** (`engine/atlas/core/importers/pdf.py`) : historique d'opérations en tableau, avis d'opéré
+  (opération, ISIN, quantité, cours, frais, date), relevé de portefeuille (positions enregistrées comme achats
+  au prix de revient à la date du relevé) ; les PDF scannés sont refusés avec une explication ;
 - la correspondance validée est mémorisée pour les imports suivants du même format.
 
 Code : `engine/atlas/core/importers/` (`reader.py` lecture, `universal.py` détection et conversion).

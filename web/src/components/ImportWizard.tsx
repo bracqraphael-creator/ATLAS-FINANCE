@@ -108,7 +108,7 @@ export function ImportWizard({ open, onClose, onImported, target }: Props) {
           <div>
             <h2 id="import-title" className="text-base font-semibold">{target ? `Importer dans ${target}` : "Importer des opérations"}</h2>
             <p className="mt-0.5 text-[13px] text-muted">
-              {analysis ? `${file?.name}, ${analysis.row_count} ligne(s) lue(s)` : "Export CSV ou Excel de votre courtier, de votre banque ou d'un autre logiciel"}
+              {analysis ? `${file?.name}, ${analysis.row_count} ligne(s) lue(s)` : "Export CSV, Excel ou PDF de votre courtier, de votre banque ou d'un autre logiciel"}
             </p>
           </div>
           <button onClick={onClose} className="rounded-md px-2 py-1 text-muted hover:bg-panel-raised hover:text-text" aria-label="Fermer">✕</button>
@@ -125,15 +125,16 @@ export function ImportWizard({ open, onClose, onImported, target }: Props) {
               className={`flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-14 text-center transition-colors ${
                 dragging ? "border-brass bg-brass/[0.06]" : "border-line"}`}>
               <p className="text-[15px] font-medium">{busy ? "Analyse du fichier…" : "Déposez votre fichier ici"}</p>
-              <p className="mt-1 text-sm text-muted">CSV ou Excel, 5 Mo maximum</p>
+              <p className="mt-1 text-sm text-muted">CSV, Excel ou PDF, 5 Mo maximum</p>
               <button onClick={() => input.current?.click()} disabled={busy}
                       className="mt-5 rounded-lg bg-brass px-4 py-2 text-sm font-medium text-ink hover:opacity-90 disabled:opacity-50">
                 Choisir un fichier
               </button>
-              <input ref={input} type="file" accept=".csv,.txt,.xlsx,.xlsm,text/csv" className="sr-only"
+              <input ref={input} type="file" accept=".csv,.txt,.xlsx,.xlsm,.pdf,text/csv,application/pdf" className="sr-only"
                      onChange={(e) => { const f = e.target.files?.[0]; if (f) analyze(f); e.target.value = ""; }} />
               <ul className="mt-8 max-w-[60ch] space-y-1 text-left text-[13px] text-muted">
                 <li>DEGIRO (export « Transactions ») est reconnu automatiquement.</li>
+                <li>PDF acceptés : historique d&apos;opérations en tableau, avis d&apos;opéré, relevé de portefeuille. Les PDF scannés (images) ne sont pas lisibles.</li>
                 <li>Pour les autres courtiers, banques et logiciels, les colonnes sont devinées : vous vérifiez la correspondance avant d&apos;importer.</li>
                 <li>Une fois validée, la correspondance est mémorisée pour vos prochains imports du même format.</li>
               </ul>

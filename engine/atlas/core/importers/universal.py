@@ -224,6 +224,11 @@ def analyze(sheet: Sheet) -> Analysis:
         conf = round(min(1.0, len(useful & set(mapping)) / 6), 2)
         if exact and fmt == "atlas-standard":
             conf = 1.0
+    pdf_labels = {"pdf-table": "PDF, tableau d'opérations", "pdf-trades": "PDF, avis d'opéré",
+                  "pdf-positions": "PDF, relevé de portefeuille"}
+    if sheet.source in pdf_labels:
+        fmt, label = sheet.source, pdf_labels[sheet.source]
+        conf = 0.9 if sheet.source != "pdf-table" else conf
     missing = [f for f in REQUIRED if f not in mapping]
     if not ({"symbol", "isin", "name"} & set(mapping)):
         missing.append("symbol")
@@ -385,7 +390,12 @@ def convert(sheet: Sheet, mapping: dict[str, int], extras: dict[str, int] | None
                 sector=(str(_cell(row, mapping, "sector")).strip() if _cell(row, mapping, "sector") else None),
             )
 
-    if inferred_from_sign:
+    if sheet.source == "pdf-positions":
+        result.notes.append("Relevé de positions : chaque titre est enregistré comme un achat au prix de revient, "
+                            "à la date du relevé. Les plus-values latentes sont justes ; l'historique antérieur n'est pas connu.")
+    if sheet.source == "pdf-trades" and result.transactions:
+        result.notes.append("Avis d'opéré lus dans le PDF : vérifiez les montants dans l'aperçu.")
+    if inferred_from_sign and not sheet.source.startswith("pdf"):
         result.notes.append(f"{inferred_from_sign} opération(s) classées achat ou vente selon le signe de la quantité.")
     if any(t.symbol and len(t.symbol) == 12 and t.symbol[:2].isalpha() and t.symbol[2:].isalnum()
            for t in result.transactions if t.symbol):

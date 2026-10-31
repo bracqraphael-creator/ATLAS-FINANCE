@@ -61,6 +61,9 @@ def _finish(rows: list[list[Any]], source: str) -> Sheet:
 
 
 def read_table(content: bytes | str, filename: str = "") -> Sheet:
+    if isinstance(content, bytes) and content[:4] == b"%PDF":
+        from .pdf import read_pdf  # import local : évite une dépendance circulaire
+        return read_pdf(content)
     if isinstance(content, bytes) and (content[:4] == XLSX_MAGIC or filename.lower().endswith((".xlsx", ".xlsm"))):
         return _read_xlsx(content)
     text = content if isinstance(content, str) else _decode(content)

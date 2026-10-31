@@ -253,7 +253,7 @@ export function Dashboard() {
           {source.kind === "portfolio" && source.data.transactions.length === 0 && (
             <section className="rounded-xl border border-line bg-panel px-6 py-12 text-center">
               <h2 className="text-base font-semibold">{source.portfolio.name} est vide</h2>
-              <p className="mx-auto mt-1 max-w-[50ch] text-sm text-muted">Importez l&apos;export CSV ou Excel de votre courtier pour lancer les analyses.</p>
+              <p className="mx-auto mt-1 max-w-[50ch] text-sm text-muted">Importez l&apos;export CSV, Excel ou PDF de votre courtier pour lancer les analyses.</p>
               <button onClick={() => setImportOpen(true)} className="mt-5 rounded-lg bg-brass px-4 py-2 text-sm font-medium text-ink hover:opacity-90">Importer des opérations</button>
             </section>
           )}

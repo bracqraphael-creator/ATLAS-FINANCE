@@ -78,6 +78,8 @@ async def analyze_import(file: UploadFile = File(...)) -> Analysis:
     content = await _read_upload(file)
     try:
         return analyze_file(content, file.filename or "")
+    except ValueError as exc:  # PDF scanné ou sans opération reconnue : message déjà rédigé
+        raise HTTPException(400, str(exc)) from exc
     except Exception as exc:  # fichier corrompu, Excel protégé…
         raise HTTPException(400, f"Fichier illisible : {exc}") from exc
 
@@ -94,6 +96,8 @@ async def import_file(file: UploadFile = File(...), mapping: str | None = Form(N
         raise HTTPException(422, "Correspondance de colonnes invalide") from exc
     try:
         return parse_file(content, file.filename or "", parsed_mapping, parsed_extras)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(400, f"Fichier illisible : {exc}") from exc
 
