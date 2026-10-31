@@ -5,7 +5,10 @@ import type { AccountPlan, ImportAnalysis, ImportResult } from "@/lib/types";
 import { WRAPPERS } from "@/lib/portfolios";
 import { formatCell, formatDate, TYPE_LABELS } from "@/lib/format";
 const REQUIRED = new Set(["date"]);
-const STORAGE_PREFIX = "atlas-mapping:";
+// v2 : les correspondances enregistrées avant l'ajout de la colonne « Compte » sont ignorées
+const STORAGE_PREFIX = "atlas-mapping-v2:";
+// Formats reconnus par un lecteur dédié : leur correspondance est toujours celle du moteur, jamais une mémoire
+const BUILT_IN = (format: string) => format.startsWith("pdf-") || ["degiro", "atlas-standard"].includes(format);
 
 type PortfolioRef = { id: string; name: string; wrapper: string };
 type Props = {
@@ -81,10 +84,12 @@ export function ImportWizard({ open, onClose, onImported, target, portfolios, cu
       const form = new FormData();
       form.append("file", f);
       const a = await post<ImportAnalysis>("imports/analyze", form);
-      const saved = loadMapping(a.headers);
+      // Mémoire utilisée seulement pour les formats génériques, et complétée par les colonnes nouvellement reconnues
+      const saved = BUILT_IN(a.format) ? null : loadMapping(a.headers);
+      const valid = saved ? Object.fromEntries(Object.entries(saved).filter(([, i]) => i < a.headers.length)) : null;
       setAnalysis(a);
-      setMapping(saved ?? a.mapping);
-      setRemembered(Boolean(saved));
+      setMapping(valid ? { ...a.mapping, ...valid } : a.mapping);
+      setRemembered(Boolean(valid));
     } catch (e) {
       setError((e as Error).message); setFile(null);
     } finally {
@@ -118,7 +123,8 @@ export function ImportWizard({ open, onClose, onImported, target, portfolios, cu
 
   const confirm = () => {
     if (!preview || !analysis || !file) return;
-    saveMapping(analysis.headers, mapping);
+    // On ne retient que les corrections faites à la main, et jamais pour un format à lecteur dédié
+    if (!BUILT_IN(analysis.format) && JSON.stringify(mapping) !== JSON.stringify(analysis.mapping)) saveMapping(analysis.headers, mapping);
     const multi = preview.accounts.length > 1 && portfolios;
     onImported(preview, file.name, multi ? plan : undefined);
     onClose();
