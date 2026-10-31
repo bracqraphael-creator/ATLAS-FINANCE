@@ -20,6 +20,8 @@ insert into public.transactions (user_id, portfolio_id, trade_date, type, symbol
   ('00000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000a', '2024-01-15', 'buy', 'CW8', 10, 450),
   ('00000000-0000-0000-0000-00000000000b', '10000000-0000-0000-0000-00000000000b', '2024-02-01', 'buy', 'AAPL', 5, 180);
 insert into public.instruments (symbol, name, asset_class, currency) values ('CW8', 'Amundi MSCI World', 'etf', 'EUR');
+insert into public.imports (id, user_id, portfolio_id, detected_format)
+values ('20000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000b', '10000000-0000-0000-0000-00000000000b', 'csv');
 
 -- On devient Alice
 set role authenticated;
@@ -88,8 +90,27 @@ do $$ begin
   assert (select count(*) from public.portfolio_instruments) = 1, 'métadonnées mal isolées';
 end $$;
 
+-- Suppression d'un import : ses opérations partent avec lui ; Alice ne peut pas supprimer l'import de Bob
+insert into public.imports (id, user_id, portfolio_id, detected_format)
+values ('20000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000a', 'csv');
+insert into public.transactions (user_id, portfolio_id, import_id, trade_date, type, symbol, quantity, price) values
+  ('00000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000a', '20000000-0000-0000-0000-00000000000a', '2024-04-01', 'buy', 'ESE', 3, 25),
+  ('00000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000a', '20000000-0000-0000-0000-00000000000a', '2024-05-01', 'buy', 'ESE', 2, 26);
+do $$ begin
+  assert (select count(*) from public.transactions) = 3, 'import non enregistré';
+end $$;
+delete from public.imports where id = '20000000-0000-0000-0000-00000000000a';
+delete from public.imports where id = '20000000-0000-0000-0000-00000000000b';  -- import de Bob : 0 ligne touchée
+delete from public.transactions where symbol = 'AAPL';                         -- ligne de Bob : 0 ligne touchée
+do $$ begin
+  assert (select count(*) from public.transactions) = 1, 'les opérations de l''import supprimé sont restées';
+  assert (select count(*) from public.imports) = 0, 'import non supprimé';
+end $$;
+
 reset role;
 do $$ begin
+  assert (select count(*) from public.imports) = 1, 'l''import de Bob a été supprimé';
+  assert (select count(*) from public.transactions where symbol = 'AAPL') = 1, 'la transaction de Bob a été supprimée';
   assert (select price from public.transactions where symbol = 'AAPL') = 180, 'la transaction de Bob a été modifiée';
   assert (select count(*) from public.portfolios) = 2, 'le portefeuille de Bob a été supprimé';
 end $$;

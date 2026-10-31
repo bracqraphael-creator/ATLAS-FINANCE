@@ -1,12 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ImportAnalysis, ImportResult, Transaction } from "@/lib/types";
-import { formatCell, formatDate } from "@/lib/format";
-
-const TYPE_LABELS: Record<Transaction["type"], string> = {
-  buy: "Achat", sell: "Vente", dividend: "Dividende", fee: "Frais", deposit: "Versement", withdrawal: "Retrait", split: "Division",
-};
+import type { ImportAnalysis, ImportResult } from "@/lib/types";
+import { formatCell, formatDate, TYPE_LABELS } from "@/lib/format";
 const REQUIRED = new Set(["date"]);
 const STORAGE_PREFIX = "atlas-mapping:";
 

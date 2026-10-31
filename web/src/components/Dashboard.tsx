@@ -6,9 +6,10 @@ import type { User } from "@supabase/supabase-js";
 import type { ImportResult, ModuleManifest, ModuleResult } from "@/lib/types";
 import { FAMILIES, UPCOMING } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/client";
-import { createPortfolio, listPortfolios, loadPortfolio, saveImport, WRAPPERS, type Portfolio, type PortfolioData } from "@/lib/portfolios";
+import { createPortfolio, deleteImport, deleteTransactions, listPortfolios, loadPortfolio, saveImport, WRAPPERS, type Portfolio, type PortfolioData } from "@/lib/portfolios";
 import { BlockList } from "./blocks/Blocks";
 import { ImportWizard } from "./ImportWizard";
+import { OperationsPanel, txKey } from "./OperationsPanel";
 import { Logo } from "./Logo";
 import { PortfolioDialog } from "./PortfolioDialog";
 
@@ -42,6 +43,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [newPortfolioOpen, setNewPortfolioOpen] = useState(false);
+  const [opsOpen, setOpsOpen] = useState(false);
 
   useEffect(() => {
     api<ModuleManifest[]>("modules").then(setModules).catch((e) => setError(e.message));
@@ -90,7 +92,9 @@ export function Dashboard() {
         : await api<ModuleResult>(`compute/${moduleId}`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ transactions: src.data.transactions, instruments: src.data.instruments }),
+            // Les identifiants de base ne servent pas au calcul
+            body: JSON.stringify({ transactions: src.data.transactions, instruments: src.data.instruments },
+                                 (k, v) => (k === "id" || k === "importId" ? undefined : v)),
           });
       setResults((r) => ({ ...r, [moduleId]: result }));
     } catch (e) {
@@ -117,6 +121,28 @@ export function Dashboard() {
     setResults({});
     setNotice(null);
     setSource({ kind: "import", fileName, data });
+  };
+
+  const onDeleteTransactions = async (keys: string[]) => {
+    const drop = new Set(keys);
+    if (source.kind === "portfolio") {
+      await deleteTransactions(supabase, keys);
+      setNotice(`${keys.length} opération(s) supprimée(s) de ${source.portfolio.name}.`);
+      await openPortfolio(source.portfolio);
+    } else if (source.kind === "import") {
+      const transactions = source.data.transactions.filter((t, i) => !drop.has(txKey(t, i)));
+      setResults({});
+      setSource({ ...source, data: { ...source.data, transactions } });
+      setNotice(`${keys.length} opération(s) retirée(s) de l'import.`);
+    }
+  };
+
+  const onDeleteImport = async (id: string) => {
+    if (source.kind !== "portfolio") return;
+    const imp = source.data.imports.find((i) => i.id === id);
+    await deleteImport(supabase, id);
+    setNotice(`Import « ${imp?.file_path || "sans nom"} » supprimé avec ses ${imp?.lines ?? 0} opération(s).`);
+    await openPortfolio(source.portfolio);
   };
 
   const onCreatePortfolio = async (name: string, wrapper: string) => {
@@ -190,6 +216,12 @@ export function Dashboard() {
                 <option value="__new">Nouveau portefeuille…</option>
               </select>
             )}
+            {source.kind !== "demo" && source.data.transactions.length > 0 && (
+              <button onClick={() => setOpsOpen(true)}
+                      className="rounded-lg border border-line px-3.5 py-2 text-sm text-muted transition-colors hover:border-faint hover:text-text">
+                Opérations
+              </button>
+            )}
             {source.kind === "import" && (
               <button onClick={() => { setResults({}); setSource({ kind: "demo" }); }}
                       className="rounded-lg border border-line px-3.5 py-2 text-sm text-muted transition-colors hover:border-faint hover:text-text">
@@ -214,6 +246,13 @@ export function Dashboard() {
         </header>
         <ImportWizard open={importOpen} onClose={() => setImportOpen(false)} onImported={onImported}
                       target={source.kind === "portfolio" ? source.portfolio.name : null} />
+        {source.kind !== "demo" && (
+          <OperationsPanel open={opsOpen} onClose={() => setOpsOpen(false)}
+                           title={source.kind === "portfolio" ? source.portfolio.name : source.fileName}
+                           transactions={source.data.transactions}
+                           imports={source.kind === "portfolio" ? source.data.imports : null}
+                           onDeleteTransactions={onDeleteTransactions} onDeleteImport={onDeleteImport} />
+        )}
         <PortfolioDialog open={newPortfolioOpen} first={portfolios.length === 0} onClose={() => setNewPortfolioOpen(false)} onCreate={onCreatePortfolio} />
 
         <main className="mx-auto max-w-[1180px] space-y-5 px-5 py-6 sm:px-8 sm:py-8">

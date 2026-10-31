@@ -42,6 +42,8 @@ export type ModuleManifest = {
 };
 
 export type Transaction = {
+  id?: string;               // identifiant en base (portefeuille enregistré)
+  importId?: string | null;  // import d'origine
   date: string;
   type: "buy" | "sell" | "dividend" | "fee" | "deposit" | "withdrawal" | "split";
   symbol: string | null;

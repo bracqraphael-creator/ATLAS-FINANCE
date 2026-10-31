@@ -1,3 +1,9 @@
+import type { Transaction } from "./types";
+
+export const TYPE_LABELS: Record<Transaction["type"], string> = {
+  buy: "Achat", sell: "Vente", dividend: "Dividende", fee: "Frais", deposit: "Versement", withdrawal: "Retrait", split: "Division",
+};
+
 const nf = (digits: number) => new Intl.NumberFormat("fr-FR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 export function formatValue(value: number | string | null | undefined, unit = ""): string {

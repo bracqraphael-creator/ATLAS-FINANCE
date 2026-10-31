@@ -15,7 +15,10 @@ export const WRAPPERS: { value: string; label: string }[] = [
 
 export type Portfolio = { id: string; name: string; wrapper: string; broker: string | null; created_at: string };
 export type Instrument = { symbol: string; name: string | null; asset_class: string; currency: string; country: string | null; sector: string | null };
-export type PortfolioData = { transactions: Transaction[]; instruments: Record<string, Instrument>; importCount: number };
+export type ImportRecord = { id: string; file_path: string | null; detected_format: string | null; created_at: string; lines: number };
+export type PortfolioData = {
+  transactions: Transaction[]; instruments: Record<string, Instrument>; imports: ImportRecord[]; importCount: number;
+};
 
 export async function listPortfolios(sb: SupabaseClient): Promise<Portfolio[]> {
   const { data, error } = await sb.from("portfolios").select("id, name, wrapper, broker, created_at").order("created_at");
@@ -39,7 +42,7 @@ export async function deletePortfolio(sb: SupabaseClient, id: string): Promise<v
 }
 
 type TxRow = {
-  trade_date: string; type: Transaction["type"]; symbol: string | null; name: string | null;
+  id: string; import_id: string | null; trade_date: string; type: Transaction["type"]; symbol: string | null; name: string | null;
   quantity: number | string; price: number | string; currency: string; fees: number | string; amount: number | string | null;
 };
 
@@ -47,19 +50,37 @@ const num = (v: number | string | null) => (v === null ? null : Number(v));
 
 export async function loadPortfolio(sb: SupabaseClient, id: string): Promise<PortfolioData> {
   const [tx, inst, imp] = await Promise.all([
-    sb.from("transactions").select("trade_date, type, symbol, name, quantity, price, currency, fees, amount")
+    sb.from("transactions").select("id, import_id, trade_date, type, symbol, name, quantity, price, currency, fees, amount")
       .eq("portfolio_id", id).order("trade_date").limit(20000),
     sb.from("portfolio_instruments").select("symbol, name, asset_class, currency, country, sector").eq("portfolio_id", id),
-    sb.from("imports").select("id", { count: "exact", head: true }).eq("portfolio_id", id),
+    sb.from("imports").select("id, file_path, detected_format, created_at").eq("portfolio_id", id).order("created_at"),
   ]);
-  if (tx.error || inst.error) throw new Error("Impossible de charger ce portefeuille.");
+  if (tx.error || inst.error || imp.error) throw new Error("Impossible de charger ce portefeuille.");
   const transactions = (tx.data as TxRow[]).map((r) => ({
-    date: r.trade_date, type: r.type, symbol: r.symbol, name: r.name,
+    id: r.id, importId: r.import_id, date: r.trade_date, type: r.type, symbol: r.symbol, name: r.name,
     quantity: Number(r.quantity), price: Number(r.price), currency: r.currency.trim(),
     fees: Number(r.fees), amount: num(r.amount),
   }));
   const instruments = Object.fromEntries((inst.data as Instrument[]).map((i) => [i.symbol, i]));
-  return { transactions, instruments, importCount: imp.count ?? 0 };
+  // Nombre de lignes encore présentes par import (certaines ont pu être supprimées une à une)
+  const perImport = new Map<string, number>();
+  for (const t of transactions) if (t.importId) perImport.set(t.importId, (perImport.get(t.importId) ?? 0) + 1);
+  const imports = (imp.data as Omit<ImportRecord, "lines">[]).map((i) => ({ ...i, lines: perImport.get(i.id) ?? 0 }));
+  return { transactions, instruments, imports, importCount: imports.length };
+}
+
+/** Supprime un import et, par cascade, toutes les opérations qu'il a créées. */
+export async function deleteImport(sb: SupabaseClient, importId: string): Promise<void> {
+  const { error } = await sb.from("imports").delete().eq("id", importId);
+  if (error) throw new Error("L'import n'a pas pu être supprimé.");
+}
+
+/** Supprime des opérations précises (par lots, pour rester sous la limite de taille d'URL). */
+export async function deleteTransactions(sb: SupabaseClient, ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += 200) {
+    const { error } = await sb.from("transactions").delete().in("id", ids.slice(i, i + 200));
+    if (error) throw new Error("Les opérations n'ont pas pu être supprimées.");
+  }
 }
 
 /** Clé d'une opération, pour ne pas réenregistrer deux fois le même import. */
