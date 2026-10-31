@@ -10,5 +10,5 @@ trap '"$PGBIN/pg_ctl" -D "$TMP/data" stop -m fast >/dev/null 2>&1 || true; rm -r
 "$PGBIN/pg_ctl" -D "$TMP/data" -o "-k $TMP -p 54329 -c listen_addresses=''" -l "$TMP/log" start >/dev/null
 PSQL=("$PGBIN/psql" -h "$TMP" -p 54329 -U postgres -d postgres -v ON_ERROR_STOP=1 -q)
 "${PSQL[@]}" -f tests/auth_stub.sql
-"${PSQL[@]}" -f migrations/0001_init.sql
+for f in migrations/*.sql; do "${PSQL[@]}" -f "$f"; done
 "${PSQL[@]}" -f tests/rls_test.sql

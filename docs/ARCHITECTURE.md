@@ -45,3 +45,10 @@ Veille actualités.
 
 ## Formules commerciales (hypothèses)
 Gratuit, Base (6,99 €/mois), Pro (12,99 €/mois), Trader (19,99 €/mois), Conseiller (49 €/mois+).
+
+## Hébergement (mis en place le 31/10/2026)
+| Brique | Service | Détail |
+| --- | --- | --- |
+| Base de données et comptes | Supabase, projet `atlas-finance` | Région Paris (eu-west-3), migrations de `supabase/migrations/` appliquées |
+| Moteur de calcul | Render, service `atlas-engine` | Francfort, formule gratuite, Docker (`engine/Dockerfile`), déploiement auto sur `main` |
+| Site | Vercel, projet `atlas-finance` | Dossier `web/`, variable `ENGINE_URL` vers le moteur, déploiement auto sur `main` |
