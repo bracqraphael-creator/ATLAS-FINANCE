@@ -127,6 +127,8 @@ YAHOO_SEARCH = {
                      {"symbol": "APC.DE", "exchange": "GER", "quoteType": "EQUITY"},
                      {"symbol": "APC.F", "exchange": "FRA", "quoteType": "EQUITY"}],
     "IE000BI8OT95": [{"symbol": "MWRD.PA", "exchange": "PAR", "quoteType": "ETF"}],
+    # Cotation trouvée par ISIN mais sans aucun cours : le repli par le nom doit prendre le relais
+    "JE00B588CD74": [{"symbol": "0P0000VIDE.L", "exchange": "LSE", "quoteType": "MUTUALFUND"}],
     "GB0004300496": [{"symbol": "PAF.L", "exchange": "LSE", "quoteType": "EQUITY"}],
     "WisdomTree Physical Swiss Gold": [{"symbol": "LEURRE.PA", "exchange": "PAR", "quoteType": "ETF"},
                                        {"symbol": "SGBS.L", "exchange": "LSE", "quoteType": "ETF"}],
@@ -210,3 +212,21 @@ def test_yahoo_repli_refuse_si_aucun_prix_ne_correspond(yahoo):
     hints = {"JE00B588CD74": ("WisdomTree Physical Swiss Gold", [(date(2024, 1, 3), 50.0, "EUR")])}
     md = provider.load(["JE00B588CD74"], {"JE00B588CD74": "EUR"}, hints=hints)
     assert not md.has("JE00B588CD74")      # mieux vaut le prix de revient qu'un cours faux
+
+
+def test_yahoo_cotation_sans_cours_puis_repli_par_le_nom(yahoo):
+    from datetime import date
+    provider, _ = yahoo
+    hints = {"JE00B588CD74": ("WisdomTree Physical Swiss Gold", [(date(2024, 1, 3), 185.84, "EUR")])}
+    md = provider.load(["JE00B588CD74"], {"JE00B588CD74": "EUR"}, hints=hints)
+    assert md.listings["JE00B588CD74"] == "SGBS.L"
+
+
+def test_yahoo_cotation_par_isin_ecartee_si_prix_invraisemblable(yahoo):
+    from datetime import date
+    provider, _ = yahoo
+    # Achat de MWRD.PA noté à 1 000 € alors que le cours était de 100 € : cotation écartée (et pas de repli possible)
+    hints = {"IE000BI8OT95": ("Amundi MSCI World", [(date(2024, 1, 3), 1000.0, "EUR")])}
+    md = provider.load(["IE000BI8OT95"], {"IE000BI8OT95": "EUR"}, hints=hints)
+    assert not md.has("IE000BI8OT95")
+    assert any("écarté" in d for d in md.diagnostics)

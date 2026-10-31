@@ -424,12 +424,33 @@ class YahooProvider:
         symbols = list(symbols)
         hints = hints or {}
 
+        def usable(sym: str, ticker: str | None) -> bool:
+            """Cotation avec des cours, et vraisemblable au regard des prix payés quand on les connaît."""
+            if ticker is None:
+                return False
+            try:
+                series, _ = self.daily(ticker, start)
+            except (httpx.HTTPError, ValueError, KeyError) as exc:
+                self.trace.append(f"{sym} -> {ticker} : {exc}")
+                return False
+            if series.empty:
+                self.trace.append(f"{sym} -> {ticker} : aucun cours")
+                return False
+            if sym in hints and hints[sym][1] and not CRYPTO_ISIN_RE.match(sym):
+                if not self._matches_trades(ticker, hints[sym][1], base_currency, start):
+                    self.trace.append(f"{sym} -> {ticker} : écarté, cours éloigné des prix payés")
+                    return False
+            return True
+
         def fetch(sym: str):
             try:
                 ticker = self.resolve(sym, currencies.get(sym, base_currency), base_currency)
-                if ticker is None and sym in hints and not sym.endswith("-TR"):
-                    name, trades = hints[sym]
-                    ticker = self.resolve_by_name(sym, name, trades, base_currency, start)
+                if not usable(sym, ticker):
+                    ticker = None
+                    if sym in hints and not sym.endswith("-TR"):
+                        name, trades = hints[sym]
+                        candidate = self.resolve_by_name(sym, name, trades, base_currency, start)
+                        ticker = candidate if usable(sym, candidate) else None
                 if ticker is None:
                     return sym, None, None, None
                 series, cur = self.daily(ticker, start)
