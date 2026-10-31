@@ -19,6 +19,7 @@ class MarketData:
         fx: dict[str, pd.Series] | None = None,
         base_currency: str = "EUR",
         source: str = "",
+        listings: dict[str, str] | None = None,
     ) -> None:
         """
         closes : symbole -> série de clôtures (index = dates, devise de cotation).
@@ -30,6 +31,7 @@ class MarketData:
         self.fx = {c: self._clean(v) for c, v in (fx or {}).items()}
         self.base_currency = base_currency
         self.source = source
+        self.listings = listings or {}   # symbole du portefeuille -> cotation utilisée (ex. ISIN -> « CW8.PA »)
 
     @staticmethod
     def _clean(series: pd.Series) -> pd.Series:

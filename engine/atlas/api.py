@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import timedelta
 from importlib import resources
 from typing import Any
 
@@ -30,13 +31,24 @@ app.add_middleware(
 )
 
 
-def load_market(portfolio: Portfolio) -> MarketData:
+def load_market(portfolio: Portfolio, demo: bool = False) -> MarketData:
+    """Cours pour un portefeuille. La démonstration garde ses cours fictifs, quel que soit le fournisseur."""
     symbols = sorted({t.symbol for t in portfolio.transactions if t.symbol})
     provider = os.environ.get("MARKET_DATA_PROVIDER", "demo").lower()
-    if provider == "eodhd":
-        currencies = {s: portfolio.instrument(s).currency for s in symbols}
-        return EodhdProvider(os.environ.get("MARKET_DATA_API_KEY", "")).load(symbols, currencies, portfolio.base_currency)
-    return DemoProvider().load(symbols, portfolio.base_currency)
+    if demo or provider != "eodhd":
+        return DemoProvider().load(symbols, portfolio.base_currency)
+    key = os.environ.get("MARKET_DATA_API_KEY", "")
+    if not key:
+        return MarketData(base_currency=portfolio.base_currency, source="aucun fournisseur de cours configuré")
+    # Devise des opérations de chaque titre : elle oriente le choix de la place de cotation
+    tx_currency: dict[str, str] = {}
+    for t in portfolio.transactions:
+        if t.symbol and t.type.value in ("buy", "sell"):
+            tx_currency.setdefault(t.symbol, t.currency)
+    start = min((t.date for t in portfolio.transactions), default=None)
+    if start:
+        start -= timedelta(days=10)   # quelques séances avant la première opération
+    return EodhdProvider(key).load(symbols, tx_currency, portfolio.base_currency, start)
 
 
 def demo_portfolio() -> Portfolio:
@@ -102,11 +114,11 @@ async def import_file(file: UploadFile = File(...), mapping: str | None = Form(N
         raise HTTPException(400, f"Fichier illisible : {exc}") from exc
 
 
-def _run(module_id: str, portfolio: Portfolio, params: dict[str, Any]) -> ModuleResult:
+def _run(module_id: str, portfolio: Portfolio, params: dict[str, Any], demo: bool = False) -> ModuleResult:
     if module_id not in registry():
         raise HTTPException(404, f"Module inconnu : {module_id}")
     try:
-        return run(module_id, portfolio, load_market(portfolio), params)
+        return run(module_id, portfolio, load_market(portfolio, demo=demo), params)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -119,4 +131,4 @@ def compute(module_id: str, req: ComputeRequest) -> ModuleResult:
 
 @app.get("/demo/{module_id}", response_model=ModuleResult)
 def demo(module_id: str) -> ModuleResult:
-    return _run(module_id, demo_portfolio(), {})
+    return _run(module_id, demo_portfolio(), {}, demo=True)

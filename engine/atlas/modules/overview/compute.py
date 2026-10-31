@@ -25,7 +25,7 @@ def compute(portfolio: Portfolio, market: MarketData, params: dict[str, Any]) ->
             value = p.quantity * market.last_price_base(p.symbol)
         else:
             price, value = None, p.cost_basis_base      # valorisé au PRU faute de cours
-            missing.append(p.symbol)
+            missing.append(inst.name or p.symbol)
         cost = p.cost_basis_base
         total_value += value
         total_cost += cost
@@ -81,7 +81,8 @@ def compute(portfolio: Portfolio, market: MarketData, params: dict[str, Any]) ->
 
     if missing:
         result.blocks.append(Note(id="missing-prices", level="warning",
-                                  text=f"Cours indisponible pour {', '.join(missing)} : ligne(s) valorisée(s) au prix de revient."))
+                                  text=f"Cours indisponible pour {len(missing)} ligne(s), valorisée(s) au prix de revient : "
+                                       f"{', '.join(missing)}."))
     for i, w in enumerate(led.warnings):
         result.blocks.append(Note(id=f"ledger-{i}", level="warning", text=w))
     if market.source:
