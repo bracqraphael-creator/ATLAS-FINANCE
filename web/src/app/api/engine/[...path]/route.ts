@@ -16,7 +16,9 @@ async function relay(req: NextRequest, path: string[]) {
     init.headers = { "content-type": type };
   }
   try {
-    const res = await fetch(`${ENGINE_URL}/${target}`, { ...init, cache: "no-store" });
+    // Paramètres de requête transmis uniquement au diagnostic des cours
+    const query = target === "market/check" ? req.nextUrl.search : "";
+    const res = await fetch(`${ENGINE_URL}/${target}${query}`, { ...init, cache: "no-store" });
     return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json" } });
   } catch {
     return Response.json({ detail: "Moteur de calcul injoignable. Est-il lancé (uvicorn atlas.api:app) ?" }, { status: 502 });
