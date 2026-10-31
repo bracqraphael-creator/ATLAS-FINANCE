@@ -1,0 +1,5 @@
+{
+  "title": "Performance",
+  "description": "Rendement de vos placements, indépendamment des sommes ajoutées ou retirées, comparé à un indice actions mondial.",
+  "method": "Rendement pondéré dans le temps (TWR) : rendements quotidiens chaînés, chaque achat ou vente étant compté au prix de l'opération ; l'argent ajouté n'est donc jamais compté comme un gain. Dividendes et coupons inclus, frais d'achat, de vente et frais isolés déduits. Rendement personnel : taux de rendement interne annuel de vos achats, ventes, dividendes et de la valeur actuelle, qui tient compte du moment de chaque versement. Comparaison : même argent, aux mêmes dates, placé dans un ETF MSCI World capitalisant (méthode des marchés publics équivalents). Les lignes sans cours sont comptées à leur prix de revient. Rendements annualisés seulement au-delà d'un an d'historique."
+}

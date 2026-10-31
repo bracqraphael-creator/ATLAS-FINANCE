@@ -36,8 +36,41 @@ def _provider_name() -> str:
     return os.environ.get("MARKET_DATA_PROVIDER", "yahoo").lower()
 
 
+BENCHMARK_TICKER = "IWDA.AS"   # iShares Core MSCI World, cotation en euros (Euronext Amsterdam)
+BENCHMARK_NAME = "MSCI World (ETF iShares Core, IWDA)"
+
+
 def load_market(portfolio: Portfolio, demo: bool = False) -> MarketData:
-    """Cours pour un portefeuille. La démonstration garde ses cours fictifs, quel que soit le fournisseur."""
+    """Cours pour un portefeuille, avec l'indice de comparaison. La démonstration garde ses cours fictifs."""
+    md = _load_prices(portfolio, demo)
+    try:
+        md.benchmark = _load_benchmark(portfolio, demo)
+    except Exception as exc:   # l'indice est un complément : son absence n'empêche aucun calcul
+        md.diagnostics.append(f"indice de comparaison : {exc}")
+    return md
+
+
+def _start(portfolio: Portfolio):
+    start = min((t.date for t in portfolio.transactions), default=None)
+    return start - timedelta(days=10) if start else None   # quelques séances avant la première opération
+
+
+def _load_benchmark(portfolio: Portfolio, demo: bool) -> tuple[str, Any] | None:
+    provider = _provider_name()
+    if demo or provider == "demo":
+        series = DemoProvider().load(["BENCH"]).closes.get("BENCH")
+        return ("Indice mondial (fictif)", series) if series is not None else None
+    start = _start(portfolio)
+    if provider == "eodhd":
+        key = os.environ.get("MARKET_DATA_API_KEY", "")
+        return (BENCHMARK_NAME, EodhdProvider(key).daily(BENCHMARK_TICKER, start)) if key else None
+    series, currency = YahooProvider().daily(BENCHMARK_TICKER, start)
+    if currency and currency.upper() != portfolio.base_currency:
+        return None
+    return BENCHMARK_NAME, series
+
+
+def _load_prices(portfolio: Portfolio, demo: bool) -> MarketData:
     symbols = sorted({t.symbol for t in portfolio.transactions if t.symbol})
     provider = _provider_name()
     if demo or provider == "demo":
@@ -47,9 +80,7 @@ def load_market(portfolio: Portfolio, demo: bool = False) -> MarketData:
     for t in portfolio.transactions:
         if t.symbol and t.type.value in ("buy", "sell"):
             tx_currency.setdefault(t.symbol, t.currency)
-    start = min((t.date for t in portfolio.transactions), default=None)
-    if start:
-        start -= timedelta(days=10)   # quelques séances avant la première opération
+    start = _start(portfolio)
     if provider == "eodhd":
         key = os.environ.get("MARKET_DATA_API_KEY", "")
         if not key:

@@ -33,6 +33,7 @@ class DemoProvider:
         "MC": ("EUR", 600.0, 0.06, 0.27, 0.65),
         "AAPL": ("USD", 130.0, 0.10, 0.29, 0.70),
         "BTC": ("EUR", 25000.0, 0.20, 0.65, 0.30),
+        "BENCH": ("EUR", 70.0, 0.07, 0.14, 1.00),   # indice de comparaison fictif (suit le facteur de marché)
     }
 
     def __init__(self, start: str = "2021-01-04", end: str = "2026-10-30") -> None:

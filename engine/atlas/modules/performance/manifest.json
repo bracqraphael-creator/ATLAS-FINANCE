@@ -1,0 +1,14 @@
+{
+  "id": "performance",
+  "name": "Performance",
+  "order": 15,
+  "version": "0.1.0",
+  "family": "portefeuille",
+  "priority": "P1",
+  "plan": "free",
+  "params": [],
+  "data": [
+    "prices_daily",
+    "fx_rates"
+  ]
+}

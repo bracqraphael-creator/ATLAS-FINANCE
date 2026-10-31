@@ -31,7 +31,8 @@ class MarketData:
         self.fx = {c: self._clean(v) for c, v in (fx or {}).items()}
         self.base_currency = base_currency
         self.source = source
-        self.diagnostics: list[str] = []   # remarques du fournisseur (titres introuvables, candidats écartés)
+        self.diagnostics: list[str] = []
+        self.benchmark: tuple[str, pd.Series] | None = None   # (nom, clôtures en devise de référence)   # remarques du fournisseur (titres introuvables, candidats écartés)
         self.listings = listings or {}   # symbole du portefeuille -> cotation utilisée (ex. ISIN -> « CW8.PA »)
 
     @staticmethod
