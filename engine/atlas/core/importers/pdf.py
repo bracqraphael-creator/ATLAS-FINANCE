@@ -10,6 +10,7 @@ import io
 import re
 from typing import Any
 
+from .pdf_traderepublic import is_trade_republic, read_trade_republic
 from .reader import Sheet
 from .universal import parse_number, parse_type, suggest_mapping
 
@@ -40,6 +41,11 @@ def read_pdf(content: bytes) -> Sheet:
     import pdfplumber  # import local : dépendance chargée seulement pour les PDF
 
     with pdfplumber.open(io.BytesIO(content)) as pdf:
+        first = (pdf.pages[0].extract_text() or "") if pdf.pages else ""
+        if is_trade_republic(first):
+            sheet = read_trade_republic(pdf.pages)
+            if sheet.rows:
+                return sheet
         pages_text = [_page_text(p) for p in pdf.pages]
         tables: list[list[list[Any]]] = []
         for p in pdf.pages:

@@ -225,10 +225,11 @@ def analyze(sheet: Sheet) -> Analysis:
         if exact and fmt == "atlas-standard":
             conf = 1.0
     pdf_labels = {"pdf-table": "PDF, tableau d'opérations", "pdf-trades": "PDF, avis d'opéré",
-                  "pdf-positions": "PDF, relevé de portefeuille"}
+                  "pdf-positions": "PDF, relevé de portefeuille",
+                  "pdf-traderepublic": "Trade Republic, relevé de compte (PDF)"}
     if sheet.source in pdf_labels:
         fmt, label = sheet.source, pdf_labels[sheet.source]
-        conf = 0.9 if sheet.source != "pdf-table" else conf
+        conf = {"pdf-table": conf, "pdf-traderepublic": 0.95}.get(sheet.source, 0.9)
     missing = [f for f in REQUIRED if f not in mapping]
     if not ({"symbol", "isin", "name"} & set(mapping)):
         missing.append("symbol")
@@ -367,12 +368,15 @@ def convert(sheet: Sheet, mapping: dict[str, int], extras: dict[str, int] | None
                 if not tx.symbol:
                     raise ValueError("aucun symbole, code ISIN ou nom de titre")
                 if tx.quantity <= 0 or tx.price <= 0:
-                    raise ValueError("quantité ou prix manquant")
+                    raise ValueError("quantité non indiquée dans le relevé (achat direct, Private Markets…)"
+                                     if sheet.source == "pdf-traderepublic" else "quantité ou prix manquant")
             if tx.type in (TransactionType.DIVIDEND, TransactionType.FEE, TransactionType.DEPOSIT,
                            TransactionType.WITHDRAWAL) and tx.amount is None:
                 raise ValueError("montant manquant pour ce type d'opération")
         except (ValueError, TypeError, ValidationError) as exc:
             msg = exc.errors()[0]["msg"] if isinstance(exc, ValidationError) else str(exc)
+            if sheet.source == "pdf-traderepublic":   # pas de numéro de ligne parlant dans un PDF : on décrit l'opération
+                msg = f"{row[0]} · {row[3]} · {row[8]} € : {msg}"
             result.rejected.append(RejectedRow(line=line_no, reason=msg))
             continue
 
@@ -390,6 +394,7 @@ def convert(sheet: Sheet, mapping: dict[str, int], extras: dict[str, int] | None
                 sector=(str(_cell(row, mapping, "sector")).strip() if _cell(row, mapping, "sector") else None),
             )
 
+    result.notes.extend(sheet.notes)
     if sheet.source == "pdf-positions":
         result.notes.append("Relevé de positions : chaque titre est enregistré comme un achat au prix de revient, "
                             "à la date du relevé. Les plus-values latentes sont justes ; l'historique antérieur n'est pas connu.")

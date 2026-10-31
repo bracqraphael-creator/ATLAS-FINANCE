@@ -19,7 +19,8 @@ XLSX_MAGIC = b"PK\x03\x04"
 class Sheet(BaseModel):
     headers: list[str]
     rows: list[list[Any]]
-    source: str = "csv"  # csv | xlsx
+    source: str = "csv"  # csv | xlsx | pdf-…
+    notes: list[str] = []  # remarques du lecteur (relevés PDF), reprises dans le résultat d'import
 
 
 def _decode(content: bytes) -> str:
