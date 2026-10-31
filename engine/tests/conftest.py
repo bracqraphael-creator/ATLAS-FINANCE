@@ -23,3 +23,9 @@ def simple_market():
         fx={"USD": pd.Series([0.9] * 5, index=idx)},
         source="test",
     )
+
+
+@pytest.fixture(autouse=True)
+def no_network_provider(monkeypatch):
+    """Aucun test n'appelle un vrai fournisseur de cours : cours fictifs sauf si un test choisit autrement."""
+    monkeypatch.setenv("MARKET_DATA_PROVIDER", "demo")

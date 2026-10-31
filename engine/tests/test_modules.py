@@ -52,7 +52,7 @@ def test_risque_historique_trop_court(simple_market):
 
 def test_risque_sur_le_portefeuille_de_demonstration():
     pf = demo_portfolio()
-    result = run("risk", pf, load_market(pf), {"lookback_years": 3})
+    result = run("risk", pf, load_market(pf, demo=True), {"lookback_years": 3})
     b = blocks(result)
     assert 0 < b["volatility"].value < 100
     assert b["max_drawdown"].value < 0
@@ -63,12 +63,12 @@ def test_risque_sur_le_portefeuille_de_demonstration():
 def test_parametre_hors_bornes_refuse():
     pf = demo_portfolio()
     with pytest.raises(ValueError):
-        run("risk", pf, load_market(pf), {"lookback_years": 50})
+        run("risk", pf, load_market(pf, demo=True), {"lookback_years": 50})
 
 
 def test_tous_les_modules_tournent_sur_la_demo():
     pf = demo_portfolio()
-    market = load_market(pf)
+    market = load_market(pf, demo=True)
     for module_id in registry():
         result = run(module_id, pf, market)
         assert result.blocks, module_id
@@ -79,7 +79,7 @@ def test_aucun_texte_de_recommandation():
     """Règle de conformité : les modules décrivent, ils ne recommandent pas."""
     forbidden = ("achetez", "vendez", "nous recommandons", "le meilleur pour vous", "conseillons")
     pf = demo_portfolio()
-    market = load_market(pf)
+    market = load_market(pf, demo=True)
     for module_id, spec in registry().items():
         text = run(module_id, pf, market).model_dump_json().lower() + str(spec.texts).lower()
         assert not any(w in text for w in forbidden), module_id

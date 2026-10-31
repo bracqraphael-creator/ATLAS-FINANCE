@@ -16,7 +16,7 @@ from . import __version__
 from .core.importers import Analysis, ImportResult, analyze_file, parse_file
 from .core.market import MarketData
 from .core.models import Instrument, Portfolio, Transaction
-from .core.providers import DemoProvider, EodhdProvider
+from .core.providers import DemoProvider, EodhdProvider, YahooProvider
 from .core.registry import registry, run
 from .core.result import ModuleResult
 
@@ -31,15 +31,17 @@ app.add_middleware(
 )
 
 
+def _provider_name() -> str:
+    """Fournisseur de cours : « yahoo » (gratuit, par défaut), « eodhd » (sous licence, clé requise), « demo »."""
+    return os.environ.get("MARKET_DATA_PROVIDER", "yahoo").lower()
+
+
 def load_market(portfolio: Portfolio, demo: bool = False) -> MarketData:
     """Cours pour un portefeuille. La démonstration garde ses cours fictifs, quel que soit le fournisseur."""
     symbols = sorted({t.symbol for t in portfolio.transactions if t.symbol})
-    provider = os.environ.get("MARKET_DATA_PROVIDER", "demo").lower()
-    if demo or provider != "eodhd":
+    provider = _provider_name()
+    if demo or provider == "demo":
         return DemoProvider().load(symbols, portfolio.base_currency)
-    key = os.environ.get("MARKET_DATA_API_KEY", "")
-    if not key:
-        return MarketData(base_currency=portfolio.base_currency, source="aucun fournisseur de cours configuré")
     # Devise des opérations de chaque titre : elle oriente le choix de la place de cotation
     tx_currency: dict[str, str] = {}
     for t in portfolio.transactions:
@@ -48,7 +50,12 @@ def load_market(portfolio: Portfolio, demo: bool = False) -> MarketData:
     start = min((t.date for t in portfolio.transactions), default=None)
     if start:
         start -= timedelta(days=10)   # quelques séances avant la première opération
-    return EodhdProvider(key).load(symbols, tx_currency, portfolio.base_currency, start)
+    if provider == "eodhd":
+        key = os.environ.get("MARKET_DATA_API_KEY", "")
+        if not key:
+            return MarketData(base_currency=portfolio.base_currency, source="clé EODHD manquante")
+        return EodhdProvider(key).load(symbols, tx_currency, portfolio.base_currency, start)
+    return YahooProvider().load(symbols, tx_currency, portfolio.base_currency, start)
 
 
 def demo_portfolio() -> Portfolio:
@@ -68,6 +75,27 @@ class ComputeRequest(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
+
+
+# Titres publics de référence pour vérifier que le fournisseur répond (aucune donnée d'utilisateur)
+MARKET_CHECK = {"US0378331005": "EUR", "IE000BI8OT95": "EUR", "FR0000121014": "EUR", "XF000BTC0017": "EUR"}
+
+
+@app.get("/market/check")
+def market_check() -> dict[str, Any]:
+    """Diagnostic : le fournisseur de cours configuré résout-il des titres connus ?"""
+    pf = Portfolio(transactions=[Transaction(date="2026-01-02", type="buy", symbol=s, quantity=1, price=1, currency=c)
+                                 for s, c in MARKET_CHECK.items()])
+    md = load_market(pf)
+    return {
+        "provider": _provider_name(),
+        "source": md.source,
+        "as_of": md.as_of.isoformat() if md.as_of else None,
+        "lines": {s: {"listing": md.listings.get(s), "currency": md.currencies.get(s),
+                      "last": round(md.last_price(s)[0], 4) if md.has(s) else None,
+                      "points": len(md.closes[s]) if md.has(s) else 0} for s in MARKET_CHECK},
+        "fx": {c: round(float(v.iloc[-1]), 5) for c, v in md.fx.items() if not v.empty},
+    }
 
 
 @app.get("/modules")

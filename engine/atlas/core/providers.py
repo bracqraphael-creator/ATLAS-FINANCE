@@ -240,3 +240,150 @@ class EodhdProvider:
                     listings.pop(sym, None)
         return MarketData(closes, quote_cur, fx, base_currency, source="EODHD, clôtures quotidiennes",
                           listings=listings)
+
+
+# Yahoo : code de place (champ « exchange » de la recherche) préféré selon la devise des opérations
+YAHOO_EXCHANGES_BY_CURRENCY = {
+    "EUR": ["PAR", "GER", "AMS", "MIL", "BRU", "MCE", "LIS", "FRA", "VIE", "HEL", "ISE", "STU", "BER", "MUN", "DUS", "HAM"],
+    "USD": ["NMS", "NYQ", "NGM", "NCM", "ASE", "PCX", "BTS"],
+    "GBP": ["LSE"],
+    "CHF": ["EBS"],
+    "CAD": ["TOR", "VAN"],
+}
+YAHOO_TYPES = {"EQUITY", "ETF", "MUTUALFUND", "CRYPTOCURRENCY"}
+
+
+class YahooProvider:
+    """Clôtures quotidiennes via les services publics de Yahoo Finance (gratuit, sans clé).
+
+    Service non officiel, sans engagement de disponibilité, réservé à un usage personnel : il sert le
+    prototype ; un fournisseur sous licence (EODHD…) prend le relais avant toute commercialisation.
+    Même logique que EodhdProvider : résolution des ISIN en cotations (place choisie selon la devise des
+    opérations), clôture brute, cotations en pence (GBp) converties en livres, cache mémoire 6 h, appels en
+    parallèle, un titre introuvable n'arrête pas les autres.
+    """
+
+    SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
+    CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+    HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; AtlasFinance/0.1)", "Accept": "application/json"}
+    TTL_SECONDS = 6 * 3600
+    _resolved: dict[tuple[str, str], tuple[float, str | None]] = {}
+    _series: dict[str, tuple[float, date | None, pd.Series, str]] = {}
+    _lock = threading.Lock()
+
+    def __init__(self, client: httpx.Client | None = None) -> None:
+        self.client = client or httpx.Client(timeout=20, headers=self.HEADERS, follow_redirects=True)
+        self.errors: list[str] = []
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        with cls._lock:
+            cls._resolved.clear()
+            cls._series.clear()
+
+    # -- cours ---------------------------------------------------------------------
+    def daily(self, ticker: str, start: date | None = None) -> tuple[pd.Series, str]:
+        """(clôtures brutes, devise de cotation) d'un symbole Yahoo, avec cache mémoire."""
+        now = time.time()
+        with self._lock:
+            hit = self._series.get(ticker)
+        if hit and now - hit[0] < self.TTL_SECONDS and (hit[1] is None or (start and hit[1] <= start)):
+            return hit[2], hit[3]
+        begin = pd.Timestamp(start or date(2000, 1, 1)).tz_localize("UTC")
+        params = {"period1": str(int(begin.timestamp())), "period2": str(int(now) + 86400),
+                  "interval": "1d", "events": "split", "includeAdjustedClose": "false"}
+        r = self.client.get(self.CHART_URL.format(symbol=ticker), params=params)
+        r.raise_for_status()
+        chart = (r.json().get("chart") or {})
+        if chart.get("error") or not chart.get("result"):
+            raise ValueError(f"cours indisponibles pour {ticker}")
+        res = chart["result"][0]
+        currency = (res.get("meta", {}).get("currency") or "").strip()
+        stamps = res.get("timestamp") or []
+        closes = ((res.get("indicators", {}).get("quote") or [{}])[0].get("close")) or []
+        idx = pd.to_datetime(stamps, unit="s", utc=True).tz_convert(None).normalize()
+        series = pd.Series(closes, index=idx, dtype=float).dropna()
+        with self._lock:
+            self._series[ticker] = (now, start, series, currency)
+        return series, currency
+
+    # -- résolution -------------------------------------------------------------------
+    def resolve(self, symbol: str, currency: str, base_currency: str = "EUR") -> str | None:
+        if symbol.endswith("-TR"):            # lignes « en montants » : jamais rattachées à un cours
+            return None
+        crypto = CRYPTO_ISIN_RE.match(symbol)
+        if crypto:
+            return f"{crypto.group(1)}-{base_currency}"
+        key = (symbol, currency)
+        now = time.time()
+        with self._lock:
+            hit = self._resolved.get(key)
+        if hit and (hit[1] is not None or now - hit[0] < 24 * 3600):
+            return hit[1]
+        found = self._search(symbol, currency)
+        with self._lock:
+            self._resolved[key] = (now, found)
+        return found
+
+    def _search(self, symbol: str, currency: str) -> str | None:
+        r = self.client.get(self.SEARCH_URL, params={"q": symbol, "quotesCount": "20", "newsCount": "0",
+                                                    "listsCount": "0", "enableFuzzyQuery": "false"})
+        r.raise_for_status()
+        quotes = r.json().get("quotes") or []
+        is_isin = bool(ISIN_RE.match(symbol))
+        preferred = YAHOO_EXCHANGES_BY_CURRENCY.get(currency, [])
+        usd = YAHOO_EXCHANGES_BY_CURRENCY["USD"]
+        best: tuple[tuple, str] | None = None
+        for q in quotes:
+            ticker, exchange = q.get("symbol"), q.get("exchange")
+            if not ticker or q.get("quoteType") not in YAHOO_TYPES:
+                continue
+            # Recherche par ticker (import CSV « CW8 ») : le symbole doit correspondre, place incluse ou non
+            if not is_isin and ticker.split(".")[0].upper() != symbol.split(".")[0].upper():
+                continue
+            rank = (
+                -(preferred.index(exchange) if exchange in preferred else 99),   # place de la devise des opérations
+                exchange in usd,                                                # repli : cotation américaine
+            )
+            if best is None or rank > best[0]:
+                best = (rank, ticker)
+        return best[1] if best else None
+
+    # -- chargement ----------------------------------------------------------------------
+    def load(self, symbols: Iterable[str], currencies: dict[str, str], base_currency: str = "EUR",
+             start: date | None = None) -> MarketData:
+        symbols = list(symbols)
+
+        def fetch(sym: str):
+            try:
+                ticker = self.resolve(sym, currencies.get(sym, base_currency), base_currency)
+                if ticker is None:
+                    return sym, None, None, None
+                series, cur = self.daily(ticker, start)
+                return sym, ticker, series, cur
+            except (httpx.HTTPError, ValueError, KeyError) as exc:
+                self.errors.append(f"{sym} : {exc}")
+                return sym, None, None, None
+
+        closes, quote_cur, listings = {}, {}, {}
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            for sym, ticker, series, cur in pool.map(fetch, symbols):
+                if ticker is None or series is None or series.empty:
+                    continue
+                if cur in ("GBp", "GBX"):          # pence -> livres
+                    series, cur = series / 100.0, "GBP"
+                cur = (cur or base_currency).upper()
+                closes[sym], quote_cur[sym], listings[sym] = series, cur, ticker
+
+        fx = {}
+        for cur in sorted({c for c in quote_cur.values() if c != base_currency}):
+            try:
+                fx[cur], _ = self.daily(f"{cur}{base_currency}=X", start)   # « USDEUR=X » : 1 USD en EUR
+            except (httpx.HTTPError, ValueError, KeyError) as exc:
+                self.errors.append(f"taux {cur}/{base_currency} : {exc}")
+                for sym in [s for s, c in quote_cur.items() if c == cur]:
+                    closes.pop(sym, None)
+                    quote_cur.pop(sym, None)
+                    listings.pop(sym, None)
+        return MarketData(closes, quote_cur, fx, base_currency, source="Yahoo Finance, clôtures quotidiennes",
+                          listings=listings)

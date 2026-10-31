@@ -113,9 +113,78 @@ def test_load_market_demo_et_sans_cle(monkeypatch):
     pf = demo_portfolio()
     assert "fictives" in load_market(pf, demo=True).source      # la démo garde ses cours fictifs
     md = load_market(pf)
-    assert md.closes == {} and "aucun fournisseur" in md.source
+    assert md.closes == {} and "clé EODHD manquante" in md.source
 
 
 def test_eodhd_sans_cle():
     with pytest.raises(ValueError):
         EodhdProvider("")
+
+
+# --------------------------------------------------------------------------- Yahoo (réponses simulées)
+YAHOO_SEARCH = {
+    "US0378331005": [{"symbol": "AAPL", "exchange": "NMS", "quoteType": "EQUITY"},
+                     {"symbol": "APC.DE", "exchange": "GER", "quoteType": "EQUITY"},
+                     {"symbol": "APC.F", "exchange": "FRA", "quoteType": "EQUITY"}],
+    "IE000BI8OT95": [{"symbol": "MWRD.PA", "exchange": "PAR", "quoteType": "ETF"}],
+    "GB0004300496": [{"symbol": "PAF.L", "exchange": "LSE", "quoteType": "EQUITY"}],
+    "CW8": [{"symbol": "CW8.PA", "exchange": "PAR", "quoteType": "ETF"},
+            {"symbol": "CW8X.DE", "exchange": "GER", "quoteType": "ETF"}],
+}
+YAHOO_CHART = {   # ticker : (devise, clôtures) ; deux séances : 02/01/2024 et 03/01/2024
+    "APC.DE": ("EUR", [170.0, 172.0]), "AAPL": ("USD", [185.0, 186.0]), "MWRD.PA": ("EUR", [100.0, None]),
+    "PAF.L": ("GBp", [21.0, 22.0]), "BTC-EUR": ("EUR", [40000.0, 41000.0]), "CW8.PA": ("EUR", [450.0, 455.0]),
+    "USDEUR=X": ("EUR", [0.91, 0.92]), "GBPEUR=X": ("EUR", [1.15, 1.16]),
+}
+
+
+def fake_yahoo(calls):
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        assert "Mozilla" in request.headers["user-agent"]
+        if request.url.path.endswith("/search"):
+            return httpx.Response(200, json={"quotes": YAHOO_SEARCH.get(request.url.params["q"], [])})
+        ticker = request.url.path.rsplit("/", 1)[-1]
+        if ticker not in YAHOO_CHART:
+            return httpx.Response(404, json={"chart": {"result": None, "error": {"code": "Not Found"}}})
+        cur, closes = YAHOO_CHART[ticker]
+        return httpx.Response(200, json={"chart": {"error": None, "result": [{
+            "meta": {"currency": cur}, "timestamp": [1704207600, 1704294000],   # 02/01 et 03/01/2024, 15 h UTC
+            "indicators": {"quote": [{"close": closes}]}}]}})
+    return handler
+
+
+@pytest.fixture
+def yahoo():
+    from atlas.core.providers import YahooProvider
+    YahooProvider.clear_cache()
+    calls: list[str] = []
+    provider = YahooProvider(client=httpx.Client(transport=httpx.MockTransport(fake_yahoo(calls)),
+                                                 headers=YahooProvider.HEADERS))
+    yield provider, calls
+    YahooProvider.clear_cache()
+
+
+def test_yahoo_resout_isin_crypto_pence_et_ticker(yahoo):
+    provider, calls = yahoo
+    syms = ["US0378331005", "IE000BI8OT95", "GB0004300496", "XF000BTC0017", "BTC-EUR-TR", "CW8", "FR0014001NN8"]
+    md = provider.load(syms, {s: "EUR" for s in syms})
+    assert md.listings["US0378331005"] == "APC.DE"          # achetée en euros : Xetra plutôt que New York
+    assert md.listings["CW8"] == "CW8.PA"                   # ticker d'un import CSV, place retrouvée
+    assert md.listings["XF000BTC0017"] == "BTC-EUR"
+    assert not md.has("BTC-EUR-TR") and not md.has("FR0014001NN8")
+    assert md.last_price("GB0004300496")[0] == pytest.approx(0.22)        # 22 pence = 0,22 £
+    assert md.last_price_base("GB0004300496") == pytest.approx(0.22 * 1.16)
+    assert md.closes["IE000BI8OT95"].tolist() == [100.0]                  # séance sans clôture ignorée
+    assert str(md.closes["US0378331005"].index[0].date()) == "2024-01-02"
+    n = len(calls)
+    provider.load(syms, {s: "EUR" for s in syms})
+    assert len(calls) == n                                                # tout vient du cache
+
+
+def test_yahoo_titre_en_dollars(yahoo):
+    provider, _ = yahoo
+    md = provider.load(["US0378331005"], {"US0378331005": "USD"})
+    assert md.listings["US0378331005"] == "AAPL"
+    assert md.last_price_base("US0378331005") == pytest.approx(186.0 * 0.92)
+    assert md.source.startswith("Yahoo")

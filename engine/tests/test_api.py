@@ -36,3 +36,13 @@ def test_parametre_invalide():
     pf = client.post("/imports", files={"file": ("pf.csv", "date,type,symbol,quantity,price\n2021-02-01,buy,CW8,5,400\n")}).json()
     r = client.post("/compute/risk", json={"transactions": pf["transactions"], "params": {"lookback_years": 99}})
     assert r.status_code == 422
+
+
+def test_diagnostic_des_cours():
+    from fastapi.testclient import TestClient
+
+    from atlas.api import app
+    r = TestClient(app).get("/market/check")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["provider"] == "demo" and set(body["lines"]) >= {"US0378331005", "XF000BTC0017"}
