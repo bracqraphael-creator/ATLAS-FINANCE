@@ -1,0 +1,5 @@
+{
+  "title": "Exposition réelle",
+  "description": "Répartition du portefeuille par classe d'actif, pays, secteur, devise et ligne.",
+  "method": "Poids = valeur de marché de chaque ligne / valeur totale, en euros. Les ETF sont comptés selon leur pays et secteur déclarés ; la décomposition ligne par ligne de leur contenu arrivera avec les données de composition."
+}

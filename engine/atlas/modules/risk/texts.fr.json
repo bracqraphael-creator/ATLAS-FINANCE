@@ -1,0 +1,5 @@
+{
+  "title": "Tableau de risque",
+  "description": "Volatilité, pire baisse et gain nécessaire pour la rattraper, ratios de Sharpe et Sortino, corrélations.",
+  "method": "Le portefeuille actuel (poids d'aujourd'hui) est rejoué sur l'historique choisi, en euros. Volatilité = écart-type des rendements quotidiens × √252. Pire baisse = plus forte chute depuis un plus haut. Gain nécessaire = baisse / (1 − baisse). Sharpe = (rendement annualisé − taux sans risque) / volatilité. Sortino : même calcul avec la seule volatilité des baisses."
+}

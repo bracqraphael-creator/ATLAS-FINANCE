@@ -1,0 +1,15 @@
+{
+  "id": "exposure",
+  "name": "Exposition réelle",
+  "order": 20,
+  "version": "0.1.0",
+  "family": "portefeuille",
+  "priority": "P1",
+  "plan": "free",
+  "params": [],
+  "data": [
+    "prices_daily",
+    "fx_rates",
+    "instruments"
+  ]
+}

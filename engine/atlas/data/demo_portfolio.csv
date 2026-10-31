@@ -1,0 +1,13 @@
+date,type,symbol,name,quantity,price,currency,fees,amount,asset_class,country,sector
+2021-02-01,deposit,,,,,EUR,,10000,,,
+2021-02-02,buy,CW8,Amundi MSCI World,12,360.50,EUR,1.99,,etf,Monde,Diversifié
+2021-02-02,buy,PAEEM,Amundi PEA Marchés Émergents,100,22.80,EUR,1.99,,etf,Émergents,Diversifié
+2021-06-15,buy,MC,LVMH,4,640.00,EUR,2.50,,equity,France,Consommation
+2022-03-10,buy,AAPL,Apple,10,150.00,USD,1.00,,equity,États-Unis,Technologie
+2022-11-20,buy,BTC,Bitcoin,0.05,16000.00,EUR,3.00,,crypto,Monde,Crypto
+2023-01-05,buy,CW8,Amundi MSCI World,3,380.00,EUR,1.99,,etf,Monde,Diversifié
+2023-05-12,dividend,MC,LVMH,,,EUR,,48.00,,,
+2024-02-01,fee,,,,,EUR,,30.00,,,
+2024-04-18,sell,MC,LVMH,2,790.00,EUR,2.50,,equity,France,Consommation
+2024-05-10,dividend,MC,LVMH,,,EUR,,26.00,,,
+2025-01-06,buy,CW8,Amundi MSCI World,4,520.00,EUR,1.99,,etf,Monde,Diversifié

@@ -1,0 +1,31 @@
+{
+  "id": "risk",
+  "name": "Tableau de risque",
+  "order": 30,
+  "version": "0.1.0",
+  "family": "risque",
+  "priority": "P1",
+  "plan": "base",
+  "params": [
+    {
+      "key": "lookback_years",
+      "label": "Historique analysé (années)",
+      "type": "number",
+      "default": 3,
+      "min": 1,
+      "max": 10
+    },
+    {
+      "key": "risk_free_rate",
+      "label": "Taux sans risque annuel",
+      "type": "number",
+      "default": 0.02,
+      "min": 0,
+      "max": 0.1
+    }
+  ],
+  "data": [
+    "prices_daily",
+    "fx_rates"
+  ]
+}

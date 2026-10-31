@@ -1,0 +1,14 @@
+{
+  "id": "overview",
+  "name": "Vue d'ensemble",
+  "order": 10,
+  "version": "0.1.0",
+  "family": "portefeuille",
+  "priority": "P1",
+  "plan": "free",
+  "params": [],
+  "data": [
+    "prices_daily",
+    "fx_rates"
+  ]
+}
