@@ -274,6 +274,7 @@ class YahooProvider:
     def __init__(self, client: httpx.Client | None = None) -> None:
         self.client = client or httpx.Client(timeout=20, headers=self.HEADERS, follow_redirects=True)
         self.errors: list[str] = []
+        self.trace: list[str] = []   # candidats examinés par le repli par le nom (diagnostic)
 
     @classmethod
     def clear_cache(cls) -> None:
@@ -375,6 +376,7 @@ class YahooProvider:
             if not to_base or not tx_to_base:
                 continue
             ratio = close * to_base / (price * tx_to_base)
+            self.trace.append(f"{ticker} {on} : cours {close:g} {cur}, payé {price:g} {tx_cur}, rapport {ratio:.2f}")
             if not 0.8 <= ratio <= 1.25:
                 return False
             checked += 1
@@ -396,7 +398,10 @@ class YahooProvider:
             r = self.client.get(self.SEARCH_URL, params={"q": query, "quotesCount": "8", "newsCount": "0",
                                                         "listsCount": "0"})
             r.raise_for_status()
-            for q in (r.json().get("quotes") or [])[:6]:
+            quotes = (r.json().get("quotes") or [])[:6]
+            self.trace.append(f"recherche « {query} » : " + ", ".join(
+                f"{q.get('symbol')} ({q.get('quoteType')})" for q in quotes) if quotes else f"recherche « {query} » : aucun résultat")
+            for q in quotes:
                 ticker = q.get("symbol")
                 if not ticker or q.get("quoteType") not in YAHOO_TYPES:
                     continue
@@ -404,7 +409,8 @@ class YahooProvider:
                     if self._matches_trades(ticker, trades, base_currency, start):
                         found = ticker
                         break
-                except (httpx.HTTPError, ValueError, KeyError):
+                except (httpx.HTTPError, ValueError, KeyError) as exc:
+                    self.trace.append(f"{ticker} : {exc}")
                     continue
         with self._lock:
             self._resolved[key] = (now, found)
@@ -452,5 +458,7 @@ class YahooProvider:
                     closes.pop(sym, None)
                     quote_cur.pop(sym, None)
                     listings.pop(sym, None)
-        return MarketData(closes, quote_cur, fx, base_currency, source="Yahoo Finance, clôtures quotidiennes",
-                          listings=listings)
+        md = MarketData(closes, quote_cur, fx, base_currency, source="Yahoo Finance, clôtures quotidiennes",
+                        listings=listings)
+        md.diagnostics = self.errors + self.trace
+        return md

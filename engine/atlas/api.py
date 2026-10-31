@@ -113,6 +113,7 @@ def market_check(symbols: str | None = None, name: str | None = None, on: str | 
                       "last": round(md.last_price(s)[0], 4) if md.has(s) else None,
                       "points": len(md.closes[s]) if md.has(s) else 0} for s in check},
         "fx": {c: round(float(v.iloc[-1]), 5) for c, v in md.fx.items() if not v.empty},
+        "diagnostics": md.diagnostics[:40],
     }
 
 
