@@ -1,0 +1,14 @@
+{
+  "id": "rebalance",
+  "name": "Rééquilibrage",
+  "order": 50,
+  "version": "0.1.0",
+  "family": "long-terme",
+  "priority": "P1",
+  "plan": "free",
+  "params": [
+    {"key": "targets", "label": "Répartition cible", "type": "allocation", "default": null},
+    {"key": "contribution", "label": "Prochain versement à répartir", "type": "number", "unit": "€", "default": 0, "min": 0, "max": 10000000, "step": 50}
+  ],
+  "data": ["prices_daily", "targets"]
+}

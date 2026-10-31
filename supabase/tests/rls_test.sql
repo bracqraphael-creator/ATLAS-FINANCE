@@ -131,6 +131,33 @@ do $$ begin
   assert (select count(*) from public.alerts) = 1, 'alerte non enregistrée';
 end $$;
 
+-- Répartition cible et abonnements : chez soi seulement ; réglages serveur inaccessibles
+insert into public.targets (user_id, portfolio_id, allocation)
+values ('00000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000a', '{"CW8": 80}');
+insert into public.push_subscriptions (user_id, endpoint, p256dh, auth)
+values ('00000000-0000-0000-0000-00000000000a', 'https://push.example/a', 'k', 'a');
+do $$ begin
+  begin
+    insert into public.targets (user_id, portfolio_id, allocation)
+    values ('00000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000b', '{}');
+    raise exception 'ECHEC : cible écrite sur le portefeuille de Bob';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.get_private_setting('alerts_cron_token');
+    raise exception 'ECHEC : réglage serveur lisible par un utilisateur';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+
+reset role;
+insert into public.push_subscriptions (user_id, endpoint, p256dh, auth)
+values ('00000000-0000-0000-0000-00000000000b', 'https://push.example/b', 'k', 'b');
+set role authenticated;
+do $$ begin
+  assert (select count(*) from public.push_subscriptions) = 1, 'Alice voit les abonnements de Bob';
+end $$;
+
 reset role;
 do $$ begin
   assert (select count(*) from public.imports) = 1, 'l''import de Bob a été supprimé';

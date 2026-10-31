@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { createClient } from "@/lib/supabase/client";
+import { DeviceCard } from "@/components/AppDevice";
 
 export default function ComptePage() {
   const router = useRouter();
@@ -45,6 +46,8 @@ export default function ComptePage() {
       </Link>
       <h1 className="text-xl font-semibold">Mon compte</h1>
       <p className="mt-1 text-sm text-muted">{email ?? "…"}</p>
+
+      <div className="mt-6"><DeviceCard supabase={createClient()} /></div>
 
       <section className="mt-6 rounded-xl border border-line bg-panel p-5">
         <h2 className="text-sm font-medium">Changer de mot de passe</h2>

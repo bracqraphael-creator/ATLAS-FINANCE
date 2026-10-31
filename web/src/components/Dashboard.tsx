@@ -9,9 +9,12 @@ import { createClient } from "@/lib/supabase/client";
 import { createPortfolio, deleteImport, deleteTransactions, listPortfolios, loadPortfolio, saveImport, WRAPPERS, type Portfolio, type PortfolioData } from "@/lib/portfolios";
 import { BlockList } from "./blocks/Blocks";
 import { AlertsPanel } from "./AlertsPanel";
+import { InstallButton } from "./AppDevice";
 import { ImportWizard } from "./ImportWizard";
 import { OperationsPanel, txKey } from "./OperationsPanel";
 import { ParamsForm } from "./ParamsForm";
+import { TargetsEditor } from "./TargetsEditor";
+import { loadTargets, saveTargets, type Allocation } from "@/lib/targets";
 import { Logo } from "./Logo";
 import { PortfolioDialog } from "./PortfolioDialog";
 
@@ -48,7 +51,9 @@ export function Dashboard() {
   const [opsOpen, setOpsOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   // Réglages par module (valeurs par défaut du manifest, puis saisies de l'utilisateur, mémorisées)
-  const [paramValues, setParamValues] = useState<Record<string, Record<string, number | null>>>({});
+  const [paramValues, setParamValues] = useState<Record<string, Record<string, unknown>>>({});
+  // Répartition cible par source (portefeuille enregistré : base ; démo et import : navigateur)
+  const [targets, setTargets] = useState<Record<string, Allocation | null>>({});
   const [accountFilter, setAccountFilter] = useState("");   // import non enregistré : un compte ou tous
 
   useEffect(() => {
@@ -90,7 +95,7 @@ export function Dashboard() {
 
   // Seule la dernière demande compte : une réponse plus ancienne (portefeuille ou compte précédent) est ignorée
   const latest = useRef(0);
-  const load = useCallback(async (moduleId: string, src: Source, params: Record<string, number | null> = {}) => {
+  const load = useCallback(async (moduleId: string, src: Source, params: Record<string, unknown> = {}) => {
     const ticket = ++latest.current;
     if (src.kind === "portfolio" && src.data.transactions.length === 0) { setResults({}); return; }
     setLoading(true);
@@ -116,6 +121,21 @@ export function Dashboard() {
     }
   }, []);
 
+  const sourceKey = source.kind === "portfolio" ? source.portfolio.id : source.kind;
+  useEffect(() => {
+    if (source.kind === "portfolio") {
+      const id = source.portfolio.id;
+      loadTargets(supabase, id).then((a) => setTargets((t) => ({ ...t, [id]: a }))).catch(() => { /* module sans cible */ });
+    } else {
+      try { const v = localStorage.getItem(`atlas-targets:${source.kind}`); if (v) setTargets((t) => ({ ...t, [source.kind]: JSON.parse(v) })); } catch { /* facultatif */ }
+    }
+  }, [source, supabase]);
+  const applyTargets = async (a: Allocation) => {
+    if (source.kind === "portfolio") await saveTargets(supabase, source.portfolio.id, a);
+    else { try { localStorage.setItem(`atlas-targets:${source.kind}`, JSON.stringify(a)); } catch { /* facultatif */ } }
+    setTargets((t) => ({ ...t, [sourceKey]: a }));
+  };
+
   // Import non enregistré à plusieurs comptes : les analyses portent sur le compte choisi
   const computed = useMemo<Source>(() => {
     if (source.kind !== "import" || !accountFilter) return source;
@@ -126,17 +146,21 @@ export function Dashboard() {
   const activeParams = useMemo(() => {
     const declared = activeSpec?.params ?? [];
     if (!declared.length) return {};
-    const saved = paramValues[active];
-    return saved ?? Object.fromEntries(declared.map((p) => [p.key, p.default]));
-  }, [activeSpec, paramValues, active]);
+    const saved = paramValues[active] ?? Object.fromEntries(declared.map((p) => [p.key, p.default]));
+    // La répartition cible dépend du portefeuille affiché, pas seulement du module
+    if (declared.some((p) => p.type === "allocation")) return { ...saved, targets: targets[sourceKey] ?? null };
+    return saved;
+  }, [activeSpec, paramValues, active, targets, sourceKey]);
 
   // Réglages mémorisés d'une visite à l'autre (navigateur de l'utilisateur)
   useEffect(() => {
     try { const v = localStorage.getItem("atlas-params"); if (v) setParamValues(JSON.parse(v)); } catch { /* facultatif */ }
   }, []);
-  const changeParams = useCallback((v: Record<string, number | null>) => {
+  const changeParams = useCallback((v: Record<string, unknown>) => {
     setParamValues((all) => {
-      const next = { ...all, [active]: v };
+      const { targets: _t, ...rest } = v;
+      void _t;
+      const next = { ...all, [active]: rest };
       try { localStorage.setItem("atlas-params", JSON.stringify(next)); } catch { /* facultatif */ }
       return next;
     });
@@ -249,6 +273,13 @@ export function Dashboard() {
     })).sort((a, b) => a.name.localeCompare(b.name, "fr"));
   }, [source]);
 
+  // Lignes proposées dans l'éditeur de cible : celles du dernier calcul du rééquilibrage (toutes sources)
+  const rebalanceLines = useMemo(() => {
+    const table = results.rebalance?.blocks.find((b) => b.type === "table" && b.id === "lines");
+    if (!table || table.type !== "table") return [];
+    return table.rows.map((r) => ({ symbol: String(r.symbol), name: String(r.name), current: Number(r.current) }));
+  }, [results]);
+
   const current = results[active];
   const spec = modules.find((m) => m.id === active);
 
@@ -287,6 +318,7 @@ export function Dashboard() {
             );
           })}
         </nav>
+        <div className="hidden px-5 pb-6 lg:block"><InstallButton className="w-full" /></div>
       </aside>
 
       {/* Contenu */}
@@ -378,6 +410,9 @@ export function Dashboard() {
           {spec?.texts.description && <p className="max-w-[68ch] text-sm text-muted">{spec.texts.description}</p>}
           {spec?.params && spec.params.length > 0 && (
             <ParamsForm params={spec.params} values={activeParams} onChange={changeParams} />
+          )}
+          {spec?.params?.some((p) => p.type === "allocation") && (
+            <TargetsEditor lines={rebalanceLines} value={targets[sourceKey] ?? null} onApply={applyTargets} />
           )}
 
           {source.kind === "import" && source.data.rejected.length > 0 && (

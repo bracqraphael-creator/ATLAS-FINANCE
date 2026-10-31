@@ -34,7 +34,7 @@ export type ModuleResult = {
 };
 
 export type ModuleParam = {
-  key: string; label: string; type: string; unit?: string; default: number | null; min?: number; max?: number; step?: number;
+  key: string; label: string; type: string; unit?: string; default: number | null; min?: number; max?: number; step?: number; max_items?: number;
 };
 export type ModuleManifest = {
   id: string;

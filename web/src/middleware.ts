@@ -7,5 +7,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Pas sur les fichiers statiques ni sur le relais vers le moteur de calcul
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/engine|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|api/engine|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?)$).*)"],
 };

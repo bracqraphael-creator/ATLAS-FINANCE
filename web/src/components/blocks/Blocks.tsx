@@ -68,7 +68,7 @@ export function DataTable({ table }: { table: TableBlock }) {
                   const tone = typeof v === "number" ? toneOf(c.key, v) : "";
                   return (
                     <td key={c.key} title={isText(c) && typeof v === "string" ? v : undefined}
-                        className={`whitespace-nowrap px-5 py-3 ${isText(c) ? `max-w-[280px] truncate ${j === 0 ? "font-medium" : ""} text-text`
+                        className={`whitespace-nowrap px-5 py-3 ${isText(c) ? `max-w-[220px] truncate ${j === 0 ? "font-medium" : ""} text-text`
                                                                           : `text-right tabular-nums ${tone || "text-text/90"}`}`}>
                       {typeof v === "number" ? formatCell(v, c.unit === "EUR" ? "EUR" : "")
                        : c.unit === "date" && typeof v === "string" ? formatDate(v) : (v ?? "—")}

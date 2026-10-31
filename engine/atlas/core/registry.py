@@ -30,14 +30,30 @@ class ModuleSpec:
         return {p["key"]: p["default"] for p in self.manifest.get("params", [])}
 
     def resolve_params(self, given: dict[str, Any] | None) -> dict[str, Any]:
+        """Réglages validés selon leur type : « number » (bornes), « symbols » (liste de codes, texte séparé par
+        des virgules accepté), « allocation » (code -> poids en %, positifs)."""
         params = self.defaults()
         for p in self.manifest.get("params", []):
-            key = p["key"]
-            if given and key in given:
-                value = given[key]
-                if value is not None and not isinstance(value, (int, float)):
+            key, kind = p["key"], p.get("type", "number")
+            if not given or key not in given or given[key] is None:
+                continue
+            value = given[key]
+            if kind == "symbols":
+                items = value.split(",") if isinstance(value, str) else value
+                if not isinstance(items, list):
+                    raise ValueError(f"Paramètre {key} : liste de codes attendue")
+                codes = [str(x).strip().upper() for x in items if str(x).strip()]
+                if len(codes) > p.get("max_items", 8):
+                    raise ValueError(f"Paramètre {key} : {p.get('max_items', 8)} titres au plus")
+                params[key] = codes
+            elif kind == "allocation":
+                if not isinstance(value, dict) or not all(isinstance(v, (int, float)) and v >= 0 for v in value.values()):
+                    raise ValueError(f"Paramètre {key} : répartition (poids positifs) attendue")
+                params[key] = {str(k): float(v) for k, v in value.items() if v > 0}
+            else:
+                if not isinstance(value, (int, float)) or isinstance(value, bool):
                     raise ValueError(f"Paramètre {key} : nombre attendu")
-                if value is not None and ("min" in p and value < p["min"] or "max" in p and value > p["max"]):
+                if "min" in p and value < p["min"] or "max" in p and value > p["max"]:
                     raise ValueError(f"Paramètre {key} hors bornes [{p.get('min')}, {p.get('max')}]")
                 params[key] = value
         return params

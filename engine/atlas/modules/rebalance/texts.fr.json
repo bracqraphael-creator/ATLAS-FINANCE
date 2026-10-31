@@ -1,0 +1,5 @@
+{
+  "title": "Rééquilibrage",
+  "description": "Écart entre la répartition actuelle et votre répartition cible, et répartition d'un versement qui s'en rapproche.",
+  "method": "Valeur de chaque ligne au dernier cours (au prix de revient faute de cours). Poids cibles ramenés à 100 %. Écart en euros = poids cible × valeur totale − valeur actuelle. Répartition d'un versement, sans vente : chaque ligne reçoit ce qui lui manque pour atteindre son poids cible dans le portefeuille augmenté du versement ; si le versement ne suffit pas, il est partagé au prorata de ces manques ; s'il les dépasse, le surplus suit les poids cibles. Calcul arithmétique de rapprochement d'une cible que vous fixez."
+}

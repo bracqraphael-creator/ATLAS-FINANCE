@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import timedelta
+from datetime import date, timedelta
 from importlib import resources
 from typing import Any
 
@@ -41,8 +41,16 @@ BENCHMARK_TICKER = "IWDA.AS"   # iShares Core MSCI World, cotation en euros (Eur
 BENCHMARK_NAME = "MSCI World (ETF iShares Core, IWDA)"
 
 
-def load_market(portfolio: Portfolio, demo: bool = False) -> MarketData:
-    """Cours pour un portefeuille, avec l'indice de comparaison. La démonstration garde ses cours fictifs."""
+def load_market(portfolio: Portfolio, demo: bool = False, extra: list[str] | None = None,
+                history_years: float | None = None) -> MarketData:
+    """Cours pour un portefeuille, avec l'indice de comparaison. La démonstration garde ses cours fictifs.
+    `extra` : titres hors portefeuille (comparateur) ; `history_years` : historique minimal demandé."""
+    if extra or history_years:
+        start = date.today() - timedelta(days=int(365.25 * (history_years or 1)) + 10)
+        ghost = [Transaction(date=start, type="buy", symbol=s, quantity=0.0, price=0.0) for s in (extra or [])]
+        anchor = [Transaction(date=start, type="deposit", amount=0.0)] if history_years else []
+        portfolio = Portfolio(transactions=portfolio.transactions + ghost + anchor, instruments=portfolio.instruments,
+                              base_currency=portfolio.base_currency)
     md = _load_prices(portfolio, demo)
     try:
         md.benchmark = _load_benchmark(portfolio, demo)
@@ -214,7 +222,11 @@ def _run(module_id: str, portfolio: Portfolio, params: dict[str, Any], demo: boo
     if module_id not in registry():
         raise HTTPException(404, f"Module inconnu : {module_id}")
     try:
-        return run(module_id, portfolio, load_market(portfolio, demo=demo), params)
+        spec = registry()[module_id]
+        resolved = spec.resolve_params(params)
+        extra = list(resolved.get("compare") or []) if spec.manifest.get("loads_symbols") else []
+        years = resolved.get("history_years") if spec.manifest.get("loads_symbols") else None
+        return run(module_id, portfolio, load_market(portfolio, demo=demo, extra=extra, history_years=years), params)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 

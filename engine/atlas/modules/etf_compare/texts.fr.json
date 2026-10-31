@@ -1,0 +1,5 @@
+{
+  "title": "Comparateur d'ETF",
+  "description": "Frais, réplication, éligibilité PEA, performances et risque de plusieurs ETF côte à côte.",
+  "method": "Caractéristiques (frais courants, réplication, PEA, distribution, domicile) : fiches des émetteurs, données indicatives, le DIC fait foi. Performances calculées sur les clôtures quotidiennes converties en euros : sur 1 an, puis annualisées sur 3 et 5 ans quand l'historique le permet. Volatilité : écart-type annualisé des rendements quotidiens sur un an. Pire baisse : plus forte baisse depuis un plus haut sur la période affichée. Courbe base 100 sur la période commune à tous les ETF."
+}

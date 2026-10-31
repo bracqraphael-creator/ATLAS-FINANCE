@@ -7,6 +7,7 @@ import {
   type AlertCondition, type AlertEvent, type AlertKind, type AlertRule,
 } from "@/lib/alerts";
 import { formatDate } from "@/lib/format";
+import { DeviceCard } from "./AppDevice";
 
 type Props = {
   open: boolean;
@@ -196,6 +197,7 @@ export function AlertsPanel({ open, onClose, supabase, portfolio, lines, email }
               </ul>
             )}
           </section>
+          <DeviceCard supabase={supabase} />
           <p className="text-xs text-faint">Les alertes constatent le franchissement des seuils que vous fixez. Ceci n&apos;est pas un conseil en investissement.</p>
         </div>
       </div>

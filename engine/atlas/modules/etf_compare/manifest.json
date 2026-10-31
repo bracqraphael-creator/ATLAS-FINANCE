@@ -1,0 +1,15 @@
+{
+  "id": "etf_compare",
+  "name": "Comparateur d'ETF",
+  "order": 45,
+  "version": "0.1.0",
+  "family": "long-terme",
+  "priority": "P1",
+  "plan": "free",
+  "loads_symbols": true,
+  "params": [
+    {"key": "compare", "label": "ETF à comparer (codes ISIN séparés par des virgules ; vide : ETF du portefeuille)", "type": "symbols", "default": null, "max_items": 6},
+    {"key": "history_years", "label": "Historique", "type": "number", "unit": "ans", "default": 5, "min": 1, "max": 10, "step": 1}
+  ],
+  "data": ["prices_daily", "etf_details"]
+}

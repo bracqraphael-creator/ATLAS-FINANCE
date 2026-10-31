@@ -10,8 +10,6 @@ export const FAMILIES: { id: string; label: string }[] = [
 ];
 
 export const UPCOMING: { family: string; name: string }[] = [
-  { family: "long-terme", name: "Comparateur d'ETF" },
-  { family: "long-terme", name: "Rééquilibrage" },
   { family: "risque", name: "Stress tests" },
   { family: "risque", name: "Projections" },
   { family: "marches", name: "Graphiques et indicateurs" },
