@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from atlas.core.analytics import ledger_for, points, value_history
+from atlas.core.analytics import account_breakdown, ledger_for, points, value_history
 from atlas.core.market import MarketData
 from atlas.core.models import Portfolio
 from atlas.core.result import fr_number, Kpi, ModuleResult, Note, Table, TimeSeries
@@ -59,6 +59,27 @@ def compute(portfolio: Portfolio, market: MarketData, params: dict[str, Any]) ->
         Kpi(id="fees", label="Frais hors achats", value=round(led.fees_base, 2), unit="EUR"),
         Kpi(id="total_gain", label="Gain total", value=round(total_gain, 2), unit="EUR",
             hint="latent + réalisé + dividendes − frais"),
+    ]
+
+    # Ventilation par compte (PEA, compte-titres, obligataire, non coté, crypto, espèces), comme chez le courtier
+    groups = account_breakdown(portfolio, market)
+    cash = sum(g["value"] for g in groups if g["kind"] == "espèces" and g["label"] == "Espèces")
+    if cash:
+        result.blocks.append(Kpi(id="cash", label="Espèces", value=round(cash, 2), unit="EUR",
+                                 hint="solde recalculé à partir des opérations"))
+    if len(groups) > 1:
+        grand = sum(g["value"] for g in groups)
+        result.blocks.append(Table(
+            id="accounts", title="Comptes",
+            columns=[{"key": "name", "label": "Compte"}, {"key": "value", "label": "Valeur", "unit": "EUR"},
+                     {"key": "pnl", "label": "+/- value", "unit": "EUR"}, {"key": "pnl_pct", "label": "+/- value", "unit": "%"},
+                     {"key": "weight", "label": "Poids", "unit": "%"}],
+            rows=[{"name": g["label"], "value": round(g["value"], 2),
+                   "pnl": round(g["pnl"], 2) if g["kind"] == "titres" else None,
+                   "pnl_pct": round(g["pnl"] / g["cost"] * 100, 2) if g["kind"] == "titres" and g["cost"] > 0 else None,
+                   "weight": round(g["value"] / grand * 100, 2) if grand > 0 else None} for g in groups],
+        ))
+    result.blocks += [
         Table(
             id="positions", title="Positions",
             columns=[

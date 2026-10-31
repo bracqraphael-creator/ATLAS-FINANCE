@@ -42,7 +42,7 @@ export async function deletePortfolio(sb: SupabaseClient, id: string): Promise<v
 }
 
 type TxRow = {
-  id: string; import_id: string | null; trade_date: string; type: Transaction["type"]; symbol: string | null; name: string | null;
+  id: string; import_id: string | null; account: string | null; trade_date: string; type: Transaction["type"]; symbol: string | null; name: string | null;
   quantity: number | string; price: number | string; currency: string; fees: number | string; amount: number | string | null;
 };
 
@@ -50,14 +50,14 @@ const num = (v: number | string | null) => (v === null ? null : Number(v));
 
 export async function loadPortfolio(sb: SupabaseClient, id: string): Promise<PortfolioData> {
   const [tx, inst, imp] = await Promise.all([
-    sb.from("transactions").select("id, import_id, trade_date, type, symbol, name, quantity, price, currency, fees, amount")
+    sb.from("transactions").select("id, import_id, account, trade_date, type, symbol, name, quantity, price, currency, fees, amount")
       .eq("portfolio_id", id).order("trade_date").limit(20000),
     sb.from("portfolio_instruments").select("symbol, name, asset_class, currency, country, sector").eq("portfolio_id", id),
     sb.from("imports").select("id, file_path, detected_format, created_at").eq("portfolio_id", id).order("created_at"),
   ]);
   if (tx.error || inst.error || imp.error) throw new Error("Impossible de charger ce portefeuille.");
   const transactions = (tx.data as TxRow[]).map((r) => ({
-    id: r.id, importId: r.import_id, date: r.trade_date, type: r.type, symbol: r.symbol, name: r.name,
+    id: r.id, importId: r.import_id, account: r.account, date: r.trade_date, type: r.type, symbol: r.symbol, name: r.name,
     quantity: Number(r.quantity), price: Number(r.price), currency: r.currency.trim(),
     fees: Number(r.fees), amount: num(r.amount),
   }));
@@ -114,7 +114,7 @@ export async function saveImport(
     const chunk = fresh.slice(i, i + 500).map((t) => ({
       user_id: userId, portfolio_id: portfolioId, import_id: imp.id, trade_date: t.date, type: t.type,
       symbol: t.symbol, name: t.name, quantity: t.quantity, price: t.price, currency: t.currency,
-      fees: t.fees, amount: t.amount,
+      fees: t.fees, amount: t.amount, account: t.account ?? null,
     }));
     const { error } = await sb.from("transactions").insert(chunk);
     if (error) throw new Error("Une partie des opérations n'a pas pu être enregistrée. Réessayez l'import.");
@@ -139,4 +139,15 @@ export async function saveImport(
     }
   }
   return { inserted: fresh.length, duplicates: result.transactions.length - fresh.length };
+}
+
+/** Nom affiché d'un compte du fichier : « Compte PEA » -> PEA, « Compte courant » (courtier en ligne) -> Compte-titres. */
+export function accountLabel(account: string): string {
+  const a = account.toLowerCase();
+  if (/pea[\s-]*pme/.test(a)) return "PEA-PME";
+  if (/\bpea\b/.test(a)) return "PEA";
+  if (/assurance\s*vie/.test(a)) return "Assurance vie";
+  if (/\bper\b/.test(a)) return "PER";
+  if (/courant|titres|\bcto\b/.test(a)) return "Compte-titres";
+  return account;
 }

@@ -70,6 +70,8 @@ class Ledger:
     fees_base: float = 0.0            # frais isolés (droits de garde, etc.)
     deposits_base: float = 0.0
     withdrawals_base: float = 0.0
+    cash_base: float = 0.0            # espèces : versements − retraits − achats + ventes + revenus − frais
+    has_cash_flows: bool = False      # le fichier contient des versements ou retraits (sinon le solde n'a pas de sens)
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -105,6 +107,7 @@ def build_ledger(transactions: Iterable[Transaction], fx: FxFn | None = None) ->
                 ledger.warnings.append(f"{t.date} : achat de {t.symbol} sans quantité ignoré.")
                 continue
             cost = t.quantity * t.price + t.fees
+            ledger.cash_base -= cost * rate
             new_qty = pos.quantity + t.quantity
             pos.avg_cost = (pos.cost_basis + cost) / new_qty
             pos.avg_cost_base = (pos.cost_basis_base + cost * rate) / new_qty
@@ -122,6 +125,7 @@ def build_ledger(transactions: Iterable[Transaction], fx: FxFn | None = None) ->
             if qty <= 0:
                 continue
             proceeds_base = (qty * t.price - t.fees) * rate
+            ledger.cash_base += proceeds_base
             cost_base = qty * pos.avg_cost_base
             pos.realized_pnl_base += proceeds_base - cost_base
             ledger.realized.append(Realized(t.date, t.symbol, qty, proceeds_base, cost_base))
@@ -140,14 +144,20 @@ def build_ledger(transactions: Iterable[Transaction], fx: FxFn | None = None) ->
 
         elif t.type == TransactionType.DIVIDEND:
             pos.dividends_base += (t.amount or 0.0) * rate
+            ledger.cash_base += (t.amount or 0.0) * rate
             ledger.income.append(Income(t.date, t.symbol, (t.amount or 0.0) * rate))
 
         elif t.type == TransactionType.FEE:
             ledger.fees_base += (t.amount or 0.0) * rate
+            ledger.cash_base -= (t.amount or 0.0) * rate
         elif t.type == TransactionType.DEPOSIT:
             ledger.deposits_base += (t.amount or 0.0) * rate
+            ledger.cash_base += (t.amount or 0.0) * rate
+            ledger.has_cash_flows = True
         elif t.type == TransactionType.WITHDRAWAL:
             ledger.withdrawals_base += (t.amount or 0.0) * rate
+            ledger.cash_base -= (t.amount or 0.0) * rate
+            ledger.has_cash_flows = True
 
     return ledger
 

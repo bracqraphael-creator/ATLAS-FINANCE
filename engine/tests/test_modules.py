@@ -83,3 +83,29 @@ def test_aucun_texte_de_recommandation():
     for module_id, spec in registry().items():
         text = run(module_id, pf, market).model_dump_json().lower() + str(spec.texts).lower()
         assert not any(w in text for w in forbidden), module_id
+
+
+def test_ventilation_par_compte_comme_chez_le_courtier():
+    from atlas.core.analytics import account_breakdown
+    from atlas.core.market import MarketData
+    t = lambda *a, account=None, **k: tx(*a, **k).model_copy(update={"account": account})  # noqa: E731
+    pf = Portfolio(transactions=[
+        t("2024-01-01", "deposit", amount=1000, account="Compte courant"),
+        t("2024-01-02", "buy", "CW8", 2, 300, account="Compte courant"),          # 600 € d'ETF
+        t("2024-01-02", "buy", "OAT", 100, 0.5, account="Compte courant"),        # 50 € d'obligation
+        t("2024-01-03", "buy", "BTC", 0.001, 50000, account="Compte courant"),    # 50 € de crypto
+        t("2024-01-04", "deposit", amount=200, account="Compte PEA"),
+        t("2024-01-05", "buy", "ESE", 5, 30, account="Compte PEA"),               # 150 € + 50 € d'espèces PEA
+    ], instruments={"OAT": Instrument(symbol="OAT", asset_class="bond"), "BTC": Instrument(symbol="BTC", asset_class="crypto")})
+    groups = {g["label"]: g for g in account_breakdown(pf, MarketData())}
+    assert set(groups) == {"Compte-titres", "Obligataire", "Crypto", "PEA", "Espèces"}
+    assert groups["Compte-titres"]["value"] == pytest.approx(600)
+    assert groups["PEA"]["value"] == pytest.approx(200)            # titres 150 + espèces 50 : le PEA garde ses espèces
+    assert groups["Espèces"]["value"] == pytest.approx(300)        # 1 000 − 600 − 50 − 50
+
+
+def test_especes_absentes_sans_versements():
+    from atlas.core.analytics import account_breakdown
+    from atlas.core.market import MarketData
+    groups = account_breakdown(Portfolio(transactions=[tx("2024-01-02", "buy", "CW8", 1, 300)]), MarketData())
+    assert [g["label"] for g in groups] == ["Compte-titres"]      # pas de solde d'espèces inventé

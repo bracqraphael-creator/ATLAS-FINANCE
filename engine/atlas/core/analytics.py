@@ -231,3 +231,65 @@ def equivalent_value(book: pd.DataFrame, benchmark: pd.Series) -> pd.Series:
         units = max(units + (row["flow"] + row["fees"]) / price, 0.0)
         out.append(units * price)
     return pd.Series(out, index=book.index, dtype=float)
+
+
+# ---------------------------------------------------------------------------
+# Ventilation par compte (comme l'application du courtier)
+# ---------------------------------------------------------------------------
+LONG_TERM_WRAPPERS = {"pea", "pea_pme", "assurance_vie", "per"}
+
+
+def account_breakdown(portfolio: Portfolio, market: MarketData) -> list[dict]:
+    """Groupes affichés : une enveloppe à fiscalité propre (PEA, assurance vie, PER) forme un groupe, espèces
+    comprises ; un compte-titres est ventilé par nature (actions et ETF, obligataire, non coté, crypto) et ses
+    espèces forment le groupe « Espèces ». Chaque groupe : valeur, prix de revient, plus-value latente.
+    Les espèces ne sont comptées que si le fichier contient les versements et retraits du compte."""
+    from .importers.universal import WRAPPER_LABELS, guess_wrapper   # import local : évite une dépendance circulaire
+
+    def fx(cur, on):
+        try:
+            return market.fx_rate(cur, on)
+        except KeyError:
+            return 1.0
+
+    accounts = list(dict.fromkeys(t.account for t in sorted(portfolio.transactions, key=lambda t: t.date)))
+    groups: dict[str, dict] = {}
+
+    def add(label: str, value: float, cost: float, kind: str, account: str | None):
+        g = groups.setdefault(label, {"label": label, "value": 0.0, "cost": 0.0, "kind": kind, "accounts": set()})
+        g["value"] += value
+        g["cost"] += cost
+        g["accounts"].add(account)
+
+    for acc in accounts:
+        led = build_ledger([t for t in portfolio.transactions if t.account == acc], fx)
+        wrapper = guess_wrapper(acc) if acc else None
+        if wrapper in LONG_TERM_WRAPPERS:
+            envelope = WRAPPER_LABELS[wrapper]
+        else:
+            envelope = "Compte-titres" if wrapper == "cto" or not acc else acc
+        for p in led.open_positions:
+            value = p.quantity * market.last_price_base(p.symbol) if market.has(p.symbol) else p.cost_basis_base
+            if wrapper in LONG_TERM_WRAPPERS:
+                label = envelope
+            else:
+                inst = portfolio.instrument(p.symbol)
+                cls = inst.asset_class.value
+                if cls == "bond":
+                    label = "Obligataire"
+                elif cls == "crypto":
+                    label = "Crypto"
+                elif p.symbol.endswith("PRIVATE-MARKETS-TR") or "private markets" in (inst.name or "").lower():
+                    label = "Non coté"
+                else:
+                    label = envelope
+            add(label, value, p.cost_basis_base, "titres", acc)
+        if led.has_cash_flows and abs(led.cash_base) > 0.005:
+            add(envelope if wrapper in LONG_TERM_WRAPPERS else "Espèces", led.cash_base, led.cash_base, "espèces", acc)
+
+    out = []
+    for g in groups.values():
+        g["pnl"] = g["value"] - g["cost"]
+        g["accounts"] = sorted(a for a in g["accounts"] if a)
+        out.append(g)
+    return sorted(out, key=lambda g: (g["label"] == "Espèces", -g["value"]))

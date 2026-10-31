@@ -56,6 +56,8 @@ function saveMapping(headers: string[], mapping: Record<string, number>) {
 
 export function ImportWizard({ open, onClose, onImported, target, portfolios, currentId, currentEmpty }: Props) {
   const [plan, setPlan] = useState<AccountPlan[]>([]);
+  // Par défaut, les comptes d'un fichier restent ensemble, ventilés comme dans l'application du courtier
+  const [split, setSplit] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<ImportAnalysis | null>(null);
   const [mapping, setMapping] = useState<Record<string, number>>({});
@@ -68,7 +70,7 @@ export function ImportWizard({ open, onClose, onImported, target, portfolios, cu
   const input = useRef<HTMLInputElement>(null);
 
   const reset = useCallback(() => {
-    setFile(null); setAnalysis(null); setMapping({}); setPreview(null); setError(null); setRemembered(false); setPlan([]);
+    setFile(null); setAnalysis(null); setMapping({}); setPreview(null); setError(null); setRemembered(false); setPlan([]); setSplit(false);
   }, []);
 
   useEffect(() => {
@@ -125,7 +127,7 @@ export function ImportWizard({ open, onClose, onImported, target, portfolios, cu
     if (!preview || !analysis || !file) return;
     // On ne retient que les corrections faites à la main, et jamais pour un format à lecteur dédié
     if (!BUILT_IN(analysis.format) && JSON.stringify(mapping) !== JSON.stringify(analysis.mapping)) saveMapping(analysis.headers, mapping);
-    const multi = preview.accounts.length > 1 && portfolios;
+    const multi = preview.accounts.length > 1 && portfolios && split;
     onImported(preview, file.name, multi ? plan : undefined);
     onClose();
   };
@@ -223,8 +225,21 @@ export function ImportWizard({ open, onClose, onImported, target, portfolios, cu
                     <h3 className="text-sm font-medium text-text">{preview.accounts.length} comptes détectés dans ce fichier</h3>
                     {portfolios ? (
                       <>
-                        <p className="mt-0.5 text-xs text-muted">Chaque compte est enregistré dans son portefeuille. Vérifiez l&apos;enveloppe et la destination.</p>
-                        <div className="mt-3 space-y-2">
+                        <div className="mt-2 space-y-1.5 text-[13px]">
+                          <label className="flex items-start gap-2">
+                            <input type="radio" name="split" checked={!split} onChange={() => setSplit(false)} className="mt-0.5 accent-[var(--color-brass)]" />
+                            <span><span className="text-text">Un seul portefeuille{target ? ` (${target})` : ""}, ventilé par compte</span>
+                              <span className="block text-xs text-faint">Comme dans l&apos;application du courtier : un menu permet d&apos;afficher chaque compte.</span></span>
+                          </label>
+                          <label className="flex items-start gap-2">
+                            <input type="radio" name="split" checked={split} onChange={() => setSplit(true)} className="mt-0.5 accent-[var(--color-brass)]" />
+                            <span className="text-text">Un portefeuille par compte</span>
+                          </label>
+                        </div>
+                        {!split && (
+                          <p className="mt-2 text-xs text-muted">{preview.accounts.map((a) => `${a.label} (${a.count})`).join(", ")}</p>
+                        )}
+                        {split && <div className="mt-3 space-y-2">
                           {plan.map((p, k) => {
                             const dest = p.destination;
                             const update = (d: AccountPlan["destination"]) =>
@@ -262,7 +277,7 @@ export function ImportWizard({ open, onClose, onImported, target, portfolios, cu
                               </div>
                             );
                           })}
-                        </div>
+                        </div>}
                       </>
                     ) : (
                       <p className="mt-0.5 text-xs text-muted">
@@ -327,7 +342,7 @@ export function ImportWizard({ open, onClose, onImported, target, portfolios, cu
             {analysis && (
               <button onClick={confirm} disabled={!count || blocked}
                       className="rounded-lg bg-brass px-4 py-2 text-sm font-medium text-ink hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
-                Importer {count} opération{count > 1 ? "s" : ""}{preview && preview.accounts.length > 1 && portfolios ? ` dans ${preview.accounts.length} portefeuilles` : ""}
+                Importer {count} opération{count > 1 ? "s" : ""}{preview && preview.accounts.length > 1 && portfolios && split ? ` dans ${preview.accounts.length} portefeuilles` : ""}
               </button>
             )}
           </div>

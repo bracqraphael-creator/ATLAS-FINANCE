@@ -6,7 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import type { AccountPlan, ImportResult, ModuleManifest, ModuleResult } from "@/lib/types";
 import { FAMILIES, UPCOMING } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/client";
-import { createPortfolio, deleteImport, deleteTransactions, listPortfolios, loadPortfolio, saveImport, WRAPPERS, type Portfolio, type PortfolioData } from "@/lib/portfolios";
+import { accountLabel, createPortfolio, deleteImport, deleteTransactions, listPortfolios, loadPortfolio, saveImport, WRAPPERS, type Portfolio, type PortfolioData } from "@/lib/portfolios";
 import { BlockList } from "./blocks/Blocks";
 import { AlertsPanel } from "./AlertsPanel";
 import { InstallButton } from "./AppDevice";
@@ -138,9 +138,20 @@ export function Dashboard() {
 
   // Import non enregistré à plusieurs comptes : les analyses portent sur le compte choisi
   const computed = useMemo<Source>(() => {
-    if (source.kind !== "import" || !accountFilter) return source;
-    return { ...source, data: { ...source.data, transactions: source.data.transactions.filter((t) => t.account === accountFilter) } };
+    if (source.kind === "demo" || !accountFilter) return source;
+    const transactions = source.data.transactions.filter((t) => t.account === accountFilter);
+    return { ...source, data: { ...source.data, transactions } } as Source;
   }, [source, accountFilter]);
+
+  // Comptes présents dans les opérations (import ou portefeuille enregistré)
+  const accountOptions = useMemo(() => {
+    if (source.kind === "demo") return [];
+    const counts = new Map<string, number>();
+    for (const t of source.data.transactions) if (t.account) counts.set(t.account, (counts.get(t.account) ?? 0) + 1);
+    return [...counts].map(([value, count]) => ({ value, count, label: accountLabel(value) }));
+  }, [source]);
+  const sourceId = source.kind === "portfolio" ? source.portfolio.id : source.kind;
+  useEffect(() => { setAccountFilter(""); }, [sourceId]);
 
   const activeSpec = modules.find((m) => m.id === active);
   const activeParams = useMemo(() => {
@@ -358,12 +369,12 @@ export function Dashboard() {
                 Opérations
               </button>
             )}
-            {source.kind === "import" && source.data.accounts?.length > 1 && (
+            {accountOptions.length > 1 && (
               <select aria-label="Compte affiché" value={accountFilter}
                       onChange={(e) => { setResults({}); setAccountFilter(e.target.value); }}
                       className="max-w-[220px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-text focus:border-brass focus:outline-none">
                 <option value="">Tous les comptes</option>
-                {source.data.accounts.map((a) => <option key={a.label} value={a.label}>{a.label} ({a.count})</option>)}
+                {accountOptions.map((a) => <option key={a.value} value={a.value}>{a.label} ({a.count})</option>)}
               </select>
             )}
             {source.kind === "import" && (
